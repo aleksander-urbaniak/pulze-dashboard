@@ -1,0 +1,68 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --base: 248 244 244;
+  --surface: 255 255 255;
+  --text: 28 24 24;
+  --muted: 120 108 108;
+  --accent: 235 99 99;
+  --accent-soft: 255 225 225;
+  --border: 236 226 226;
+}
+
+.dark {
+  --base: 8 14 30;
+  --surface: 18 26 48;
+  --text: 232 238 252;
+  --muted: 156 170 196;
+  --accent: 236 96 96;
+  --accent-soft: 62 36 48;
+  --border: 42 56 86;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body), "Segoe UI", sans-serif;
+  background: linear-gradient(140deg, rgba(248, 246, 246, 0.98), rgba(240, 238, 238, 0.94));
+  color: rgb(var(--text));
+}
+
+.dark body {
+  background: linear-gradient(165deg, rgba(8, 14, 30, 0.98), rgba(12, 20, 40, 0.94));
+}
+
+.theme-icon {
+  transition: transform 0.4s ease, opacity 0.4s ease;
+}
+
+.theme-icon--sun {
+  transform: rotate(0deg) scale(1);
+  opacity: 1;
+}
+
+.theme-icon--moon {
+  transform: rotate(-20deg) scale(0.95);
+  opacity: 0.9;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display), "Segoe UI", sans-serif;
+}
+
+::selection {
+  background: rgba(235, 99, 99, 0.3);
+}
