@@ -81,10 +81,26 @@ export default function HomePage() {
   const [needsSetup, setNeedsSetup] = useState(false);
   const [isCheckingSetup, setIsCheckingSetup] = useState(true);
   const [newAlertCount, setNewAlertCount] = useState(0);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [notifications, setNotifications] = useState<Alert[]>([]);
   const lastAlertIdsRef = useRef<Set<string> | null>(null);
+  const notificationsRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     void loadSession();
+  }, []);
+
+  useEffect(() => {
+    function handleClick(event: MouseEvent) {
+      if (!notificationsRef.current) {
+        return;
+      }
+      if (!notificationsRef.current.contains(event.target as Node)) {
+        setIsNotificationsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
   useEffect(() => {
@@ -197,6 +213,8 @@ export default function HomePage() {
       setUser(null);
       lastAlertIdsRef.current = null;
       setNewAlertCount(0);
+      setNotifications([]);
+      setIsNotificationsOpen(false);
       await checkSetup();
       setIsCheckingSetup(false);
       return;
@@ -227,14 +245,10 @@ export default function HomePage() {
     setErrors(data.errors ?? []);
     const currentIds = new Set(data.alerts.map((alert) => alert.id));
     if (lastAlertIdsRef.current) {
-      let diff = 0;
-      data.alerts.forEach((alert) => {
-        if (!lastAlertIdsRef.current?.has(alert.id)) {
-          diff += 1;
-        }
-      });
-      if (diff > 0) {
-        setNewAlertCount((count) => count + diff);
+      const newAlerts = data.alerts.filter((alert) => !lastAlertIdsRef.current?.has(alert.id));
+      if (newAlerts.length > 0) {
+        setNewAlertCount((count) => count + newAlerts.length);
+        setNotifications((prev) => [...newAlerts, ...prev].slice(0, 20));
       }
     }
     lastAlertIdsRef.current = currentIds;
@@ -285,6 +299,8 @@ export default function HomePage() {
     setIsCheckingSetup(true);
     lastAlertIdsRef.current = null;
     setNewAlertCount(0);
+    setNotifications([]);
+    setIsNotificationsOpen(false);
     await checkSetup();
     setIsCheckingSetup(false);
   }
@@ -560,32 +576,91 @@ export default function HomePage() {
                   className="w-full rounded-xl border border-border bg-base/60 py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
                 />
               </div>
-              <button
-                type="button"
-                onClick={() => setNewAlertCount(0)}
-                className="relative rounded-full border border-border bg-surface/80 p-2"
-                aria-label="Notifications"
-                title={newAlertCount > 0 ? `${newAlertCount} new alerts` : "No new alerts"}
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                  <path
-                    d="M6 9a6 6 0 1 1 12 0c0 3.2 1.2 4.6 2 5.4H4c.8-.8 2-2.2 2-5.4Z"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                  <path
-                    d="M9.5 19a2.5 2.5 0 0 0 5 0"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinecap="round"
-                  />
-                </svg>
-                {newAlertCount > 0 ? (
-                  <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500" />
+              <div ref={notificationsRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsNotificationsOpen((open) => !open);
+                    setNewAlertCount(0);
+                  }}
+                  className="relative rounded-full border border-border bg-surface/80 p-2"
+                  aria-label="Notifications"
+                  title={newAlertCount > 0 ? `${newAlertCount} new alerts` : "No new alerts"}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                    <path
+                      d="M6 9a6 6 0 1 1 12 0c0 3.2 1.2 4.6 2 5.4H4c.8-.8 2-2.2 2-5.4Z"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                    <path
+                      d="M9.5 19a2.5 2.5 0 0 0 5 0"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                  {newAlertCount > 0 ? (
+                    <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500" />
+                  ) : null}
+                </button>
+                {isNotificationsOpen ? (
+                  <div className="absolute right-0 mt-3 w-80 rounded-2xl border border-border bg-surface/95 p-4 shadow-card backdrop-blur">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs uppercase tracking-[0.2em] text-muted">Notifications</p>
+                      {notifications.length > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNotifications([]);
+                            setNewAlertCount(0);
+                          }}
+                          className="text-xs uppercase tracking-[0.2em] text-muted"
+                        >
+                          Clear
+                        </button>
+                      ) : null}
+                    </div>
+                    {notifications.length === 0 ? (
+                      <p className="mt-3 text-sm text-muted">No new alerts yet.</p>
+                    ) : (
+                      <div className="mt-3 space-y-3">
+                        {notifications.map((alert) => (
+                          <div
+                            key={`notify-${alert.id}`}
+                            className="rounded-xl border border-border bg-base/60 px-3 py-2"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-sm font-semibold">{alert.name}</span>
+                              <span
+                                className={clsx(
+                                  "rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.2em]",
+                                  alert.severity === "critical"
+                                    ? "bg-red-500/15 text-red-500"
+                                    : alert.severity === "warning"
+                                      ? "bg-yellow-400/20 text-yellow-600"
+                                      : "bg-emerald-400/15 text-emerald-500"
+                                )}
+                              >
+                                {alert.severity}
+                              </span>
+                            </div>
+                            <div className="mt-2 flex items-center justify-between text-xs text-muted">
+                              <span>{alert.sourceLabel || alert.source}</span>
+                              <span>{new Date(alert.timestamp).toLocaleString()}</span>
+                            </div>
+                            {alert.instance ? (
+                              <p className="mt-1 text-xs text-muted">{alert.instance}</p>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 ) : null}
-              </button>
+              </div>
               <div className="rounded-full border border-border bg-surface/80 px-4 py-2 text-xs uppercase tracking-[0.2em]">
                 Hello, {user.firstName}!
               </div>
