@@ -147,3 +147,109 @@ h4 {
 ::selection {
   background: rgba(24, 134, 111, 0.25);
 }
+
+@layer base {
+  button,
+  [role="button"] {
+    cursor: pointer;
+    transition:
+      transform 160ms ease,
+      background-color 200ms ease,
+      border-color 200ms ease,
+      color 200ms ease,
+      box-shadow 200ms ease,
+      filter 200ms ease;
+    will-change: transform;
+  }
+
+  button:not(:disabled):hover,
+  [role="button"]:not([aria-disabled="true"]):hover {
+    transform: translateY(-1px);
+    filter: brightness(1.12);
+  }
+
+  button:not(:disabled):active,
+  [role="button"]:not([aria-disabled="true"]):active {
+    transform: translateY(0) scale(0.98);
+  }
+
+  button:disabled,
+  [role="button"][aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+
+  .nav-link {
+    transition:
+      transform 160ms ease,
+      background-color 200ms ease,
+      border-color 200ms ease,
+      color 200ms ease,
+      filter 200ms ease;
+    will-change: transform;
+  }
+
+  .nav-link:hover {
+    filter: brightness(1.12);
+  }
+
+  .nav-link:active {
+    transform: scale(0.98);
+  }
+
+  .nav-static button,
+  .nav-static .nav-link {
+    transform: none;
+  }
+
+  .nav-static button:not(:disabled):hover,
+  .nav-static button:not(:disabled):active,
+  .nav-static .nav-link:hover,
+  .nav-static .nav-link:active {
+    transform: none;
+  }
+
+  .dropdown-option,
+  .dropdown-option:hover,
+  .dropdown-option:active {
+    transform: none;
+    filter: none;
+  }
+
+  select {
+    transition:
+      transform 160ms ease-in-out,
+      border-color 200ms ease-in-out,
+      box-shadow 200ms ease-in-out;
+    color: rgb(var(--text));
+  }
+
+  select option,
+  select optgroup {
+    background-color: rgb(var(--surface));
+    color: rgb(var(--text));
+  }
+
+  select option:checked,
+  select option:focus,
+  select option:active {
+    background-color: rgb(var(--accent));
+    color: #fff;
+  }
+
+  select:focus,
+  select:focus-visible {
+    border-color: rgb(var(--accent) / 0.6);
+    box-shadow: 0 0 0 2px rgb(var(--accent) / 0.18);
+    outline: none;
+  }
+
+  select:not(:disabled):active {
+    transform: scale(0.99);
+  }
+}
+
+@layer utilities {
+  select.rounded-xl {
+    border-radius: 1rem;
+  }
+}

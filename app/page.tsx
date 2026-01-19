@@ -5,8 +5,10 @@ import clsx from "clsx";
 
 import ThemeToggle from "../components/ThemeToggle";
 import Sidebar from "../components/Sidebar";
+import FilterSelect from "../components/FilterSelect";
 import { defaultAppearance } from "../lib/appearance";
-import type { Alert, SavedView, SavedViewFilters, Settings, User } from "../lib/types";
+import type { Alert, Settings, User } from "../lib/types";
+import styles from "./page.module.css";
 
 const emptySettings: Settings = {
   prometheusSources: [],
@@ -18,13 +20,28 @@ const emptySettings: Settings = {
 
 const sourceOptions = ["All", "Prometheus", "Zabbix", "Kuma"] as const;
 const severityOptions = ["All", "critical", "warning", "info"] as const;
-const timeRangeOptions = [
-  { value: "all", label: "All time" },
-  { value: "1h", label: "Last hour" },
-  { value: "24h", label: "Last 24h" },
-  { value: "7d", label: "Last 7d" },
-  { value: "30d", label: "Last 30d" }
-] as const;
+const viewModeOptions = ["cards", "table", "split"] as const;
+const filterStorageKey = "pulze-dashboard:filters";
+const filterCookieKey = "pulze_dashboard_filters";
+const filterCookieMaxAge = 60 * 60 * 24 * 60;
+
+function readCookieValue(name: string) {
+  if (typeof document === "undefined") {
+    return null;
+  }
+  const entry = document.cookie.split("; ").find((row) => row.startsWith(`${name}=`));
+  if (!entry) {
+    return null;
+  }
+  return decodeURIComponent(entry.split("=").slice(1).join("="));
+}
+
+function writeCookieValue(name: string, value: string) {
+  if (typeof document === "undefined") {
+    return;
+  }
+  document.cookie = `${name}=${encodeURIComponent(value)}; path=/; max-age=${filterCookieMaxAge}; samesite=lax`;
+}
 
 type ApiError = { source: string; message: string };
 
@@ -36,9 +53,6 @@ type UserResponse = { user: User };
 
 type BootstrapResponse = { needsSetup: boolean };
 
-type SavedViewsResponse = { views: SavedView[] };
-
-type SavedViewResponse = { view: SavedView };
 
 export default function HomePage() {
   const [user, setUser] = useState<User | null>(null);
@@ -46,17 +60,10 @@ export default function HomePage() {
   const [errors, setErrors] = useState<ApiError[]>([]);
   const [isLoadingAlerts, setIsLoadingAlerts] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [filterTags, setFilterTags] = useState("");
   const [filterSource, setFilterSource] = useState<(typeof sourceOptions)[number]>("All");
   const [filterSeverity, setFilterSeverity] = useState<(typeof severityOptions)[number]>("All");
-  const [filterTimeRange, setFilterTimeRange] =
-    useState<(typeof timeRangeOptions)[number]["value"]>("24h");
   const [viewMode, setViewMode] = useState<"cards" | "table" | "split">("cards");
   const [settings, setSettings] = useState<Settings>(emptySettings);
-  const [savedViews, setSavedViews] = useState<SavedView[]>([]);
-  const [selectedViewId, setSelectedViewId] = useState<string | null>(null);
-  const [viewName, setViewName] = useState("");
-  const [viewStatus, setViewStatus] = useState<string | null>(null);
   const [loginForm, setLoginForm] = useState({ username: "", password: "" });
   const [loginError, setLoginError] = useState<string | null>(null);
   const [setupForm, setSetupForm] = useState({
@@ -78,10 +85,58 @@ export default function HomePage() {
   const lastAlertIdsRef = useRef<Set<string> | null>(null);
   const notificationsRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const sourceFilterOptions = sourceOptions.map((option) => ({ value: option, label: option }));
+  const severityFilterOptions = severityOptions.map((option) => ({ value: option, label: option }));
 
   useEffect(() => {
     void loadSession();
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const saved = window.localStorage.getItem(filterStorageKey) ?? readCookieValue(filterCookieKey);
+    if (!saved) {
+      return;
+    }
+    try {
+      const parsed = JSON.parse(saved) as Partial<{
+        source: (typeof sourceOptions)[number];
+        severity: (typeof severityOptions)[number];
+        viewMode: (typeof viewModeOptions)[number];
+      }>;
+      if (parsed.source && sourceOptions.includes(parsed.source)) {
+        setFilterSource(parsed.source);
+      }
+      if (parsed.severity && severityOptions.includes(parsed.severity)) {
+        setFilterSeverity(parsed.severity);
+      }
+      if (parsed.viewMode && viewModeOptions.includes(parsed.viewMode)) {
+        setViewMode(parsed.viewMode);
+      }
+    } catch {
+      window.localStorage.removeItem(filterStorageKey);
+      writeCookieValue(filterCookieKey, "");
+    }
+  }, []);
+
+  function persistFilters(next?: {
+    source?: (typeof sourceOptions)[number];
+    severity?: (typeof severityOptions)[number];
+    viewMode?: (typeof viewModeOptions)[number];
+  }) {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const payload = JSON.stringify({
+      source: next?.source ?? filterSource,
+      severity: next?.severity ?? filterSeverity,
+      viewMode: next?.viewMode ?? viewMode
+    });
+    window.localStorage.setItem(filterStorageKey, payload);
+    writeCookieValue(filterCookieKey, payload);
+  }
 
   useEffect(() => {
     function handleClick(event: MouseEvent) {
@@ -108,7 +163,6 @@ export default function HomePage() {
       }
       if (event.key === "Escape") {
         setSearchTerm("");
-        setFilterTags("");
       }
     }
     window.addEventListener("keydown", handleShortcut);
@@ -119,7 +173,6 @@ export default function HomePage() {
     if (user) {
       void loadSettings();
       void loadAlerts();
-      void loadSavedViews();
     }
   }, [user]);
 
@@ -135,44 +188,16 @@ export default function HomePage() {
   }, [user, settings.refreshInterval]);
 
   const filteredAlerts = useMemo(() => {
-    const now = Date.now();
-    const timeLimit =
-      filterTimeRange === "1h"
-        ? now - 60 * 60 * 1000
-        : filterTimeRange === "24h"
-          ? now - 24 * 60 * 60 * 1000
-          : filterTimeRange === "7d"
-            ? now - 7 * 24 * 60 * 60 * 1000
-            : filterTimeRange === "30d"
-              ? now - 30 * 24 * 60 * 60 * 1000
-              : null;
-    const tags = filterTags
-      .split(",")
-      .map((tag) => tag.trim().toLowerCase())
-      .filter(Boolean);
-
     return alerts.filter((alert) => {
       const matchSearch =
         alert.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         alert.message.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (alert.instance ?? "").toLowerCase().includes(searchTerm.toLowerCase());
-      const matchTags =
-        tags.length === 0 ||
-        tags.every((tag) => {
-          return (
-            alert.name.toLowerCase().includes(tag) ||
-            alert.message.toLowerCase().includes(tag) ||
-            (alert.instance ?? "").toLowerCase().includes(tag) ||
-            (alert.sourceLabel ?? alert.source).toLowerCase().includes(tag)
-          );
-        });
       const matchSource = filterSource === "All" || alert.source === filterSource;
       const matchSeverity = filterSeverity === "All" || alert.severity === filterSeverity;
-      const matchTime =
-        !timeLimit || new Date(alert.timestamp).getTime() >= timeLimit;
-      return matchSearch && matchTags && matchSource && matchSeverity && matchTime;
+      return matchSearch && matchSource && matchSeverity;
     });
-  }, [alerts, searchTerm, filterTags, filterSource, filterSeverity, filterTimeRange]);
+  }, [alerts, searchTerm, filterSource, filterSeverity]);
 
   useEffect(() => {
     if (filteredAlerts.length === 0) {
@@ -207,8 +232,6 @@ export default function HomePage() {
       setNewAlertCount(0);
       setNotifications([]);
       setIsNotificationsOpen(false);
-      setSavedViews([]);
-      setSelectedViewId(null);
       await checkSetup();
       setIsCheckingSetup(false);
       return;
@@ -225,15 +248,6 @@ export default function HomePage() {
     }
     const data = (await response.json()) as SettingsResponse;
     setSettings(data.settings);
-  }
-
-  async function loadSavedViews() {
-    const response = await fetch("/api/views");
-    if (!response.ok) {
-      return;
-    }
-    const data = (await response.json()) as SavedViewsResponse;
-    setSavedViews(data.views ?? []);
   }
 
   async function loadAlerts() {
@@ -258,68 +272,6 @@ export default function HomePage() {
     setIsLoadingAlerts(false);
   }
 
-  function getCurrentFilters(): SavedViewFilters {
-    return {
-      searchTerm,
-      filterTags,
-      filterSource,
-      filterSeverity,
-      filterTimeRange,
-      viewMode
-    };
-  }
-
-  function applySavedView(view: SavedView) {
-    setSearchTerm(view.filters.searchTerm);
-    setFilterTags(view.filters.filterTags);
-    setFilterSource(view.filters.filterSource);
-    setFilterSeverity(view.filters.filterSeverity);
-    setFilterTimeRange(view.filters.filterTimeRange);
-    setViewMode(view.filters.viewMode);
-    setSelectedViewId(view.id);
-    setViewStatus(null);
-  }
-
-  async function handleSaveView() {
-    const name = viewName.trim();
-    if (!name) {
-      setViewStatus("View name required.");
-      return;
-    }
-    const response = await fetch("/api/views", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, filters: getCurrentFilters() })
-    });
-    if (!response.ok) {
-      const data = await response.json();
-      setViewStatus(data.error ?? "Failed to save view.");
-      return;
-    }
-    const data = (await response.json()) as SavedViewResponse;
-    setSavedViews((prev) => [data.view, ...prev]);
-    setSelectedViewId(data.view.id);
-    setViewName("");
-    setViewStatus("View saved.");
-  }
-
-  async function handleDeleteView(id: string) {
-    const response = await fetch("/api/views", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id })
-    });
-    if (!response.ok) {
-      const data = await response.json();
-      setViewStatus(data.error ?? "Failed to delete view.");
-      return;
-    }
-    setSavedViews((prev) => prev.filter((view) => view.id !== id));
-    if (selectedViewId === id) {
-      setSelectedViewId(null);
-    }
-    setViewStatus("View deleted.");
-  }
 
   async function updateAlertState(alertId: string, status: "active" | "acknowledged" | "resolved") {
     const response = await fetch("/api/alerts/state", {
@@ -404,8 +356,6 @@ export default function HomePage() {
     setNewAlertCount(0);
     setNotifications([]);
     setIsNotificationsOpen(false);
-    setSavedViews([]);
-    setSelectedViewId(null);
     await checkSetup();
     setIsCheckingSetup(false);
   }
@@ -597,33 +547,6 @@ export default function HomePage() {
               <h2 className="text-2xl font-semibold">Monitoring Overview</h2>
             </div>
             <div className="flex flex-1 flex-wrap items-center justify-end gap-3">
-              <div className="relative w-full max-w-xs">
-                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                    <circle
-                      cx="11"
-                      cy="11"
-                      r="7"
-                      stroke="currentColor"
-                      strokeWidth="1.6"
-                    />
-                    <path
-                      d="M20 20l-3.5-3.5"
-                      stroke="currentColor"
-                      strokeWidth="1.6"
-                      strokeLinecap="round"
-                    />
-                  </svg>
-                </span>
-                <input
-                  value={searchTerm}
-                  onChange={(event) => setSearchTerm(event.target.value)}
-                  ref={searchInputRef}
-                  placeholder="Search alerts..."
-                  aria-label="Search alerts"
-                  className="w-full rounded-xl border border-border bg-base/60 py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
-                />
-              </div>
               <div ref={notificationsRef} className="relative z-40">
                 <button
                   type="button"
@@ -633,6 +556,8 @@ export default function HomePage() {
                   }}
                   className="relative rounded-full border border-border bg-surface/80 p-2"
                   aria-label="Notifications"
+                  aria-haspopup="menu"
+                  aria-expanded={isNotificationsOpen}
                   title={newAlertCount > 0 ? `${newAlertCount} new alerts` : "No new alerts"}
                 >
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
@@ -654,60 +579,66 @@ export default function HomePage() {
                     <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500" />
                   ) : null}
                 </button>
-                {isNotificationsOpen ? (
-                  <div className="absolute right-0 mt-3 w-80 rounded-2xl border border-border bg-surface/95 p-4 shadow-card backdrop-blur z-50">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs uppercase tracking-[0.2em] text-muted">Notifications</p>
-                      {notifications.length > 0 ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setNotifications([]);
-                            setNewAlertCount(0);
-                          }}
-                          className="text-xs uppercase tracking-[0.2em] text-muted"
-                        >
-                          Clear
-                        </button>
-                      ) : null}
-                    </div>
-                    {notifications.length === 0 ? (
-                      <p className="mt-3 text-sm text-muted">No new alerts yet.</p>
-                    ) : (
-                      <div className="mt-3 space-y-3">
-                        {notifications.map((alert) => (
-                          <div
-                            key={`notify-${alert.id}`}
-                            className="rounded-xl border border-border bg-base/60 px-3 py-2"
-                          >
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="text-sm font-semibold">{alert.name}</span>
-                              <span
-                                className={clsx(
-                                  "rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.2em]",
-                                  alert.severity === "critical"
-                                    ? "bg-red-500/15 text-red-500"
-                                    : alert.severity === "warning"
-                                      ? "bg-yellow-400/20 text-yellow-600"
-                                      : "bg-emerald-400/15 text-emerald-500"
-                                )}
-                              >
-                                {alert.severity}
-                              </span>
-                            </div>
-                            <div className="mt-2 flex items-center justify-between text-xs text-muted">
-                              <span>{alert.sourceLabel || alert.source}</span>
-                              <span>{new Date(alert.timestamp).toLocaleString()}</span>
-                            </div>
-                            {alert.instance ? (
-                              <p className="mt-1 text-xs text-muted">{alert.instance}</p>
-                            ) : null}
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                <div
+                  className={clsx(
+                    "absolute right-0 mt-3 w-80 origin-top-right rounded-2xl border border-border bg-surface/95 p-4 shadow-card backdrop-blur z-50 transition duration-200 ease-in-out",
+                    isNotificationsOpen
+                      ? "visible pointer-events-auto translate-y-0 scale-100 opacity-100"
+                      : "invisible pointer-events-none -translate-y-1 scale-95 opacity-0"
+                  )}
+                  aria-hidden={!isNotificationsOpen}
+                >
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs uppercase tracking-[0.2em] text-muted">Notifications</p>
+                    {notifications.length > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNotifications([]);
+                          setNewAlertCount(0);
+                        }}
+                        className="text-xs uppercase tracking-[0.2em] text-muted"
+                      >
+                        Clear
+                      </button>
+                    ) : null}
                   </div>
-                ) : null}
+                  {notifications.length === 0 ? (
+                    <p className="mt-3 text-sm text-muted">No new alerts yet.</p>
+                  ) : (
+                    <div className="mt-3 space-y-3">
+                      {notifications.map((alert) => (
+                        <div
+                          key={`notify-${alert.id}`}
+                          className="rounded-xl border border-border bg-base/60 px-3 py-2"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-sm font-semibold">{alert.name}</span>
+                            <span
+                              className={clsx(
+                                "rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.2em]",
+                                alert.severity === "critical"
+                                  ? "bg-red-500/15 text-red-500"
+                                  : alert.severity === "warning"
+                                    ? "bg-yellow-400/20 text-yellow-600"
+                                    : "bg-emerald-400/15 text-emerald-500"
+                              )}
+                            >
+                              {alert.severity}
+                            </span>
+                          </div>
+                          <div className="mt-2 flex items-center justify-between text-xs text-muted">
+                            <span>{alert.sourceLabel || alert.source}</span>
+                            <span>{new Date(alert.timestamp).toLocaleString()}</span>
+                          </div>
+                          {alert.instance ? (
+                            <p className="mt-1 text-xs text-muted">{alert.instance}</p>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="rounded-full border border-border bg-surface/80 px-4 py-2 text-xs uppercase tracking-[0.2em]">
                 Hello, {user.firstName}!
@@ -715,159 +646,79 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div className="sticky top-4 z-30 mt-6 rounded-2xl border border-border bg-surface/90 p-4 shadow-card backdrop-blur">
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex flex-wrap items-center gap-3">
-                <select
-                  value={selectedViewId ?? ""}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    const view = savedViews.find((item) => item.id === value);
-                    if (view) {
-                      applySavedView(view);
-                    } else {
-                      setSelectedViewId(null);
-                    }
-                  }}
-                  className="min-w-[180px] rounded-xl border border-border bg-base/60 px-3 py-2 text-sm"
-                  aria-label="Saved views"
-                >
-                  <option value="">Saved views</option>
-                  {savedViews.map((view) => (
-                    <option key={view.id} value={view.id}>
-                      {view.name}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  value={viewName}
-                  onChange={(event) => setViewName(event.target.value)}
-                  placeholder="Save current view"
-                  aria-label="Save current view"
-                  className="min-w-[200px] flex-1 rounded-xl border border-border bg-base/60 px-3 py-2 text-sm"
-                />
-                <button
-                  type="button"
-                  onClick={handleSaveView}
-                  className="rounded-xl border border-border px-4 py-2 text-xs uppercase tracking-[0.2em]"
-                >
-                  Save
-                </button>
-                {selectedViewId ? (
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteView(selectedViewId)}
-                    className="rounded-xl border border-border px-4 py-2 text-xs uppercase tracking-[0.2em] text-muted"
-                  >
-                    Delete
-                  </button>
-                ) : null}
-              </div>
-              <div className="flex flex-wrap items-center gap-3">
-                <select
-                  value={filterTimeRange}
-                  onChange={(event) =>
-                    setFilterTimeRange(
-                      event.target.value as (typeof timeRangeOptions)[number]["value"]
-                    )
-                  }
-                  className="rounded-xl border border-border bg-base/60 px-3 py-2 text-sm"
-                  aria-label="Time range filter"
-                >
-                  {timeRangeOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={filterSource}
-                  onChange={(event) =>
-                    setFilterSource(event.target.value as (typeof sourceOptions)[number])
-                  }
-                  className="rounded-xl border border-border bg-base/60 px-3 py-2 text-sm"
-                  aria-label="Source filter"
-                >
-                  {sourceOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={filterSeverity}
-                  onChange={(event) =>
-                    setFilterSeverity(event.target.value as (typeof severityOptions)[number])
-                  }
-                  className="rounded-xl border border-border bg-base/60 px-3 py-2 text-sm"
-                  aria-label="Severity filter"
-                >
-                  {severityOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  value={filterTags}
-                  onChange={(event) => setFilterTags(event.target.value)}
-                  placeholder="Tags (comma-separated)"
-                  aria-label="Tag filter"
-                  className="min-w-[220px] flex-1 rounded-xl border border-border bg-base/60 px-3 py-2 text-sm"
-                />
-              </div>
-              <div className="ml-auto flex flex-wrap items-center gap-3">
-                {viewStatus ? (
-                  <span className="text-xs uppercase tracking-[0.2em] text-muted">{viewStatus}</span>
-                ) : null}
-                <span className="text-xs uppercase tracking-[0.2em] text-muted">
-                  Auto refresh {settings.refreshInterval}s
-                </span>
-                <button
-                  type="button"
-                  onClick={() => void loadAlerts()}
-                  className="rounded-xl border border-border px-4 py-2 text-xs uppercase tracking-[0.2em]"
-                >
-                  {isLoadingAlerts ? "Refreshing" : "Refresh"}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-6 rounded-2xl border border-border bg-surface/90 p-4 shadow-card backdrop-blur">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <p className="text-xs uppercase tracking-[0.3em] text-muted">Active Alerts</p>
-                <div className="flex flex-wrap items-baseline gap-3">
-                  <h3 className="text-3xl font-semibold">{filteredAlerts.length}</h3>
-                  <span className="text-sm text-muted">
-                    {filterTimeRange === "all" ? "All time" : "Filtered"}
-                  </span>
-                </div>
-                {errors.length > 0 ? (
-                  <div className="mt-2 text-sm text-red-500">
-                    {errors.map((error) => `${error.source}: ${error.message}`).join(" | ")}
-                  </div>
-                ) : null}
-              </div>
-              <div className="text-xs uppercase tracking-[0.2em] text-muted">
-                Press <span className="font-semibold">/</span> to search, Esc to clear
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-8 flex flex-wrap items-center justify-between gap-4">
+          <div className={styles.latestHeader}>
             <div>
               <p className="text-xs uppercase tracking-[0.3em] text-muted">Alerts</p>
-              <h3 className="text-xl font-semibold">Latest activity</h3>
+              <h3 className="text-xl font-semibold">Current Alerts</h3>
+              <p className={styles.latestMeta}>Active alerts: {filteredAlerts.length}</p>
             </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <div className="flex items-center rounded-full border border-border bg-base/60 p-1 text-xs uppercase tracking-[0.2em]">
+            <div className={styles.latestControls}>
+              <div className={styles.searchWrap}>
+                <span className={styles.searchIcon}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                    <circle
+                      cx="11"
+                      cy="11"
+                      r="7"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                    />
+                    <path
+                      d="M20 20l-3.5-3.5"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </span>
+                <input
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                  ref={searchInputRef}
+                  placeholder="(/ to search, Esc to clear)"
+                  aria-label="Search alerts"
+                  className={styles.searchInput}
+                />
+              </div>
+              <div className={styles.latestFilters}>
+                <FilterSelect
+                  value={filterSource}
+                  onChange={(value) =>
+                    {
+                      const nextValue = value as (typeof sourceOptions)[number];
+                      setFilterSource(nextValue);
+                      persistFilters({ source: nextValue });
+                    }
+                  }
+                  options={sourceFilterOptions}
+                  ariaLabel="Source filter"
+                  className={styles.filterSelect}
+                  optionClassName="text-sm"
+                />
+                <FilterSelect
+                  value={filterSeverity}
+                  onChange={(value) =>
+                    {
+                      const nextValue = value as (typeof severityOptions)[number];
+                      setFilterSeverity(nextValue);
+                      persistFilters({ severity: nextValue });
+                    }
+                  }
+                  options={severityFilterOptions}
+                  ariaLabel="Severity filter"
+                  className={styles.filterSelect}
+                  optionClassName="text-sm"
+                />
+              </div>
+              <div className={styles.viewToggle}>
                 <button
                   type="button"
-                  onClick={() => setViewMode("cards")}
+                  onClick={() => {
+                    setViewMode("cards");
+                    persistFilters({ viewMode: "cards" });
+                  }}
                   className={clsx(
-                    "rounded-full px-3 py-1",
+                    styles.viewToggleButton,
                     viewMode === "cards" ? "bg-accent text-white" : "text-muted"
                   )}
                 >
@@ -875,9 +726,12 @@ export default function HomePage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setViewMode("table")}
+                  onClick={() => {
+                    setViewMode("table");
+                    persistFilters({ viewMode: "table" });
+                  }}
                   className={clsx(
-                    "rounded-full px-3 py-1",
+                    styles.viewToggleButton,
                     viewMode === "table" ? "bg-accent text-white" : "text-muted"
                   )}
                 >
@@ -885,18 +739,25 @@ export default function HomePage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setViewMode("split")}
+                  onClick={() => {
+                    setViewMode("split");
+                    persistFilters({ viewMode: "split" });
+                  }}
                   className={clsx(
-                    "rounded-full px-3 py-1",
+                    styles.viewToggleButton,
                     viewMode === "split" ? "bg-accent text-white" : "text-muted"
                   )}
                 >
                   Split
                 </button>
               </div>
-              <span className="text-xs uppercase tracking-[0.2em] text-muted">
-                Showing {filteredAlerts.length}
-              </span>
+              <button
+                type="button"
+                onClick={() => void loadAlerts()}
+                className={styles.refreshButton}
+              >
+                {isLoadingAlerts ? "Refreshing" : "Refresh"}
+              </button>
             </div>
           </div>
 

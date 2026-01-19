@@ -1,0 +1,43 @@
+.filterSelect {
+  @apply rounded-xl border border-border bg-base/60 px-3 py-2 text-sm;
+}
+
+.searchWrap {
+  @apply relative w-full max-w-sm lg:w-[280px] lg:max-w-none;
+}
+
+.searchIcon {
+  @apply pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted;
+}
+
+.searchInput {
+  @apply w-full rounded-full border border-border bg-base/60 py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30;
+}
+
+.latestHeader {
+  @apply mt-8 grid gap-4 rounded-2xl border border-border bg-surface/90 p-4 lg:grid-cols-[1fr_auto] lg:items-center;
+}
+
+.latestControls {
+  @apply flex flex-wrap items-center gap-3 lg:flex-nowrap lg:justify-end;
+}
+
+.latestFilters {
+  @apply flex flex-wrap items-center gap-3 lg:flex-nowrap;
+}
+
+.viewToggle {
+  @apply flex items-center rounded-full border border-border bg-base/60 p-1 text-xs uppercase tracking-[0.2em];
+}
+
+.viewToggleButton {
+  @apply rounded-full px-3 py-1;
+}
+
+.refreshButton {
+  @apply rounded-full border border-border px-4 py-2 text-xs uppercase tracking-[0.2em];
+}
+
+.latestMeta {
+  @apply mt-2 text-sm text-muted;
+}

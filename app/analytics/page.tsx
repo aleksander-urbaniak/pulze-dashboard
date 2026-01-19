@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import Sidebar from "../../components/Sidebar";
 import AlertChart from "../../components/AlertChart";
+import FilterSelect from "../../components/FilterSelect";
 import {
   buildMonthOptions,
   buildTrendData,
@@ -468,17 +469,14 @@ export default function AnalyticsPage() {
                     </button>
                   ))}
                   {trendRange === "month" ? (
-                    <select
+                    <FilterSelect
                       value={trendMonth}
-                      onChange={(event) => setTrendMonth(event.target.value)}
+                      onChange={(value) => setTrendMonth(value)}
+                      options={monthOptions}
+                      ariaLabel="Trend month"
                       className="rounded-full border border-border bg-base/60 px-3 py-1 text-xs uppercase tracking-[0.2em]"
-                    >
-                      {monthOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
+                      optionClassName="text-xs uppercase tracking-[0.2em]"
+                    />
                   ) : null}
                   <span className="rounded-full border border-border bg-base/60 px-3 py-1 text-xs uppercase tracking-[0.2em] text-muted">
                     {alerts.length} total

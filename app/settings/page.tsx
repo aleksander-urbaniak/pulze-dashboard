@@ -405,8 +405,11 @@ export default function SettingsPage() {
     return `${type}-${id}`;
   }
 
-  async function testSource(type: "Prometheus" | "Zabbix" | "Kuma", id: string) {
-    const key = testKey(type, id);
+  async function testSource(
+    type: "Prometheus" | "Zabbix" | "Kuma",
+    source: PrometheusSource | ZabbixSource | KumaSource
+  ) {
+    const key = testKey(type, source.id);
     setTestResults((prev) => ({
       ...prev,
       [key]: { status: "loading", message: "Testing connection..." }
@@ -415,7 +418,7 @@ export default function SettingsPage() {
     const response = await fetch("/api/test-source", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type, id })
+      body: JSON.stringify({ type, source })
     });
 
     if (!response.ok) {
@@ -537,7 +540,7 @@ export default function SettingsPage() {
                                 <div className="flex items-center gap-2">
                                   <button
                                     type="button"
-                                    onClick={() => testSource("Prometheus", source.id)}
+                                    onClick={() => testSource("Prometheus", source)}
                                     disabled={!canEditSettings || !source.url}
                                     className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em]"
                                   >
@@ -665,7 +668,7 @@ export default function SettingsPage() {
                                 <div className="flex items-center gap-2">
                                   <button
                                     type="button"
-                                    onClick={() => testSource("Zabbix", source.id)}
+                                    onClick={() => testSource("Zabbix", source)}
                                     disabled={!canEditSettings || !source.url}
                                     className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em]"
                                   >
@@ -778,7 +781,7 @@ export default function SettingsPage() {
                                 <div className="flex items-center gap-2">
                                   <button
                                     type="button"
-                                    onClick={() => testSource("Kuma", source.id)}
+                                    onClick={() => testSource("Kuma", source)}
                                     disabled={
                                       !canEditSettings ||
                                       !source.baseUrl ||

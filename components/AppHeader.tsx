@@ -31,7 +31,7 @@ export default function AppHeader({ title, user, onLogout }: AppHeaderProps) {
   }, [open]);
 
   return (
-    <header className="sticky top-0 z-20 border-b border-border/70 bg-base/70 backdrop-blur">
+    <header className="nav-static z-20 border-b border-border/70 bg-base/70 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-5">
         <Link href="/" className="group inline-flex items-center gap-3">
           <span className="flex h-10 w-10 items-center justify-center rounded-2xl border border-border bg-surface/90 shadow-card">
@@ -60,14 +60,19 @@ export default function AppHeader({ title, user, onLogout }: AppHeaderProps) {
               type="button"
               onClick={() => setOpen((prev) => !prev)}
               className="rounded-full border border-border px-4 py-2 text-xs uppercase tracking-[0.2em]"
+              aria-expanded={open}
+              aria-haspopup="menu"
             >
               Menu
             </button>
             <div
               className={clsx(
-                "absolute right-0 mt-2 w-44 rounded-2xl border border-border bg-surface/95 p-2 text-sm shadow-card backdrop-blur",
-                open ? "block" : "hidden"
+                "absolute right-0 mt-2 w-44 origin-top-right rounded-2xl border border-border bg-surface/95 p-2 text-sm shadow-card backdrop-blur transition duration-200 ease-in-out",
+                open
+                  ? "visible pointer-events-auto translate-y-0 scale-100 opacity-100"
+                  : "invisible pointer-events-none -translate-y-1 scale-95 opacity-0"
               )}
+              aria-hidden={!open}
             >
               <Link
                 href="/"

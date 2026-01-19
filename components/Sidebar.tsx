@@ -75,7 +75,7 @@ export default function Sidebar({ user, onLogout, settingsTabs }: SidebarProps) 
   const isSettingsSection = pathname.startsWith("/settings");
 
   return (
-    <aside className="flex min-h-screen w-64 flex-col border-r border-border bg-surface/90 px-5 py-6 shadow-card">
+    <aside className="nav-static flex min-h-screen w-64 flex-col border-r border-border bg-surface/90 px-5 py-6 shadow-card">
       <Link href="/" className="group flex items-center gap-3">
         <span className="brand-logo flex h-10 w-10 items-center justify-center rounded-2xl border border-border bg-base/80">
           <span className="brand-logo__image" />
@@ -103,7 +103,7 @@ export default function Sidebar({ user, onLogout, settingsTabs }: SidebarProps) 
               <Link
                 href={item.href}
                 className={clsx(
-                  "flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm font-semibold",
+                  "nav-link flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm font-semibold",
                   active
                     ? "border-accent bg-accent text-white"
                     : "border-border bg-base/60 text-text"
