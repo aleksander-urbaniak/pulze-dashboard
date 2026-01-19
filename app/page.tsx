@@ -1,36 +1,30 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import clsx from "clsx";
 
 import ThemeToggle from "../components/ThemeToggle";
 import Sidebar from "../components/Sidebar";
-import AlertChart from "../components/AlertChart";
-import {
-  buildMonthOptions,
-  buildTrendData,
-  getMonthValue,
-  type TrendRange
-} from "../lib/analytics";
-import type { Alert, Settings, User } from "../lib/types";
+import { defaultAppearance } from "../lib/appearance";
+import type { Alert, SavedView, SavedViewFilters, Settings, User } from "../lib/types";
 
 const emptySettings: Settings = {
   prometheusSources: [],
   zabbixSources: [],
   kumaSources: [],
-  refreshInterval: 30
+  refreshInterval: 30,
+  appearance: defaultAppearance
 };
 
 const sourceOptions = ["All", "Prometheus", "Zabbix", "Kuma"] as const;
 const severityOptions = ["All", "critical", "warning", "info"] as const;
-const trendRanges: Array<{ value: TrendRange; label: string }> = [
-  { value: "1d", label: "1D" },
-  { value: "7d", label: "7D" },
-  { value: "14d", label: "14D" },
-  { value: "month", label: "Month" },
-  { value: "year", label: "Last year" }
-];
+const timeRangeOptions = [
+  { value: "all", label: "All time" },
+  { value: "1h", label: "Last hour" },
+  { value: "24h", label: "Last 24h" },
+  { value: "7d", label: "Last 7d" },
+  { value: "30d", label: "Last 30d" }
+] as const;
 
 type ApiError = { source: string; message: string };
 
@@ -42,18 +36,9 @@ type UserResponse = { user: User };
 
 type BootstrapResponse = { needsSetup: boolean };
 
-function formatDelta(current: number, previous: number) {
-  if (previous === 0) {
-    if (current === 0) {
-      return { trend: "up" as const, text: "0.0%" };
-    }
-    return { trend: "up" as const, text: "+100.0%" };
-  }
-  const diff = ((current - previous) / previous) * 100;
-  const trend = diff >= 0 ? "up" : "down";
-  const text = `${diff >= 0 ? "+" : ""}${Math.abs(diff).toFixed(1)}%`;
-  return { trend, text };
-}
+type SavedViewsResponse = { views: SavedView[] };
+
+type SavedViewResponse = { view: SavedView };
 
 export default function HomePage() {
   const [user, setUser] = useState<User | null>(null);
@@ -61,12 +46,17 @@ export default function HomePage() {
   const [errors, setErrors] = useState<ApiError[]>([]);
   const [isLoadingAlerts, setIsLoadingAlerts] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [filterTags, setFilterTags] = useState("");
   const [filterSource, setFilterSource] = useState<(typeof sourceOptions)[number]>("All");
   const [filterSeverity, setFilterSeverity] = useState<(typeof severityOptions)[number]>("All");
-  const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
-  const [trendRange, setTrendRange] = useState<TrendRange>("14d");
-  const [trendMonth, setTrendMonth] = useState(() => getMonthValue(new Date()));
+  const [filterTimeRange, setFilterTimeRange] =
+    useState<(typeof timeRangeOptions)[number]["value"]>("24h");
+  const [viewMode, setViewMode] = useState<"cards" | "table" | "split">("cards");
   const [settings, setSettings] = useState<Settings>(emptySettings);
+  const [savedViews, setSavedViews] = useState<SavedView[]>([]);
+  const [selectedViewId, setSelectedViewId] = useState<string | null>(null);
+  const [viewName, setViewName] = useState("");
+  const [viewStatus, setViewStatus] = useState<string | null>(null);
   const [loginForm, setLoginForm] = useState({ username: "", password: "" });
   const [loginError, setLoginError] = useState<string | null>(null);
   const [setupForm, setSetupForm] = useState({
@@ -83,8 +73,11 @@ export default function HomePage() {
   const [newAlertCount, setNewAlertCount] = useState(0);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [notifications, setNotifications] = useState<Alert[]>([]);
+  const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null);
+  const [alertNoteDraft, setAlertNoteDraft] = useState("");
   const lastAlertIdsRef = useRef<Set<string> | null>(null);
   const notificationsRef = useRef<HTMLDivElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     void loadSession();
@@ -104,9 +97,29 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
+    function handleShortcut(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) {
+        return;
+      }
+      if (event.key === "/") {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+      }
+      if (event.key === "Escape") {
+        setSearchTerm("");
+        setFilterTags("");
+      }
+    }
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, []);
+
+  useEffect(() => {
     if (user) {
       void loadSettings();
       void loadAlerts();
+      void loadSavedViews();
     }
   }, [user]);
 
@@ -122,80 +135,59 @@ export default function HomePage() {
   }, [user, settings.refreshInterval]);
 
   const filteredAlerts = useMemo(() => {
+    const now = Date.now();
+    const timeLimit =
+      filterTimeRange === "1h"
+        ? now - 60 * 60 * 1000
+        : filterTimeRange === "24h"
+          ? now - 24 * 60 * 60 * 1000
+          : filterTimeRange === "7d"
+            ? now - 7 * 24 * 60 * 60 * 1000
+            : filterTimeRange === "30d"
+              ? now - 30 * 24 * 60 * 60 * 1000
+              : null;
+    const tags = filterTags
+      .split(",")
+      .map((tag) => tag.trim().toLowerCase())
+      .filter(Boolean);
+
     return alerts.filter((alert) => {
       const matchSearch =
         alert.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         alert.message.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (alert.instance ?? "").toLowerCase().includes(searchTerm.toLowerCase());
+      const matchTags =
+        tags.length === 0 ||
+        tags.every((tag) => {
+          return (
+            alert.name.toLowerCase().includes(tag) ||
+            alert.message.toLowerCase().includes(tag) ||
+            (alert.instance ?? "").toLowerCase().includes(tag) ||
+            (alert.sourceLabel ?? alert.source).toLowerCase().includes(tag)
+          );
+        });
       const matchSource = filterSource === "All" || alert.source === filterSource;
       const matchSeverity = filterSeverity === "All" || alert.severity === filterSeverity;
-      return matchSearch && matchSource && matchSeverity;
+      const matchTime =
+        !timeLimit || new Date(alert.timestamp).getTime() >= timeLimit;
+      return matchSearch && matchTags && matchSource && matchSeverity && matchTime;
     });
-  }, [alerts, searchTerm, filterSource, filterSeverity]);
+  }, [alerts, searchTerm, filterTags, filterSource, filterSeverity, filterTimeRange]);
 
-  const analytics = useMemo(() => {
-    const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const startOfTomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-    const startOfYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const startOfYear = new Date(now.getFullYear(), 0, 1);
-    const startOfNextYear = new Date(now.getFullYear() + 1, 0, 1);
-    const startOfLastYear = new Date(now.getFullYear() - 1, 0, 1);
+  useEffect(() => {
+    if (filteredAlerts.length === 0) {
+      setSelectedAlertId(null);
+      return;
+    }
+    if (!selectedAlertId || !filteredAlerts.some((alert) => alert.id === selectedAlertId)) {
+      setSelectedAlertId(filteredAlerts[0].id);
+    }
+  }, [filteredAlerts, selectedAlertId]);
 
-    const counts = {
-      currentDay: 0,
-      lastDay: 0,
-      currentMonth: 0,
-      lastMonth: 0,
-      currentYear: 0,
-      lastYear: 0
-    };
-
-    const traffic = new Map<string, number>();
-
-    alerts.forEach((alert) => {
-      const ts = new Date(alert.timestamp);
-      if (Number.isNaN(ts.getTime())) {
-        return;
-      }
-      if (ts >= startOfToday && ts < startOfTomorrow) {
-        counts.currentDay += 1;
-      } else if (ts >= startOfYesterday && ts < startOfToday) {
-        counts.lastDay += 1;
-      }
-      if (ts >= startOfMonth && ts < startOfNextMonth) {
-        counts.currentMonth += 1;
-      } else if (ts >= startOfLastMonth && ts < startOfMonth) {
-        counts.lastMonth += 1;
-      }
-      if (ts >= startOfYear && ts < startOfNextYear) {
-        counts.currentYear += 1;
-      } else if (ts >= startOfLastYear && ts < startOfYear) {
-        counts.lastYear += 1;
-      }
-
-      const monitoringLabel = (alert.sourceLabel ?? alert.source).trim();
-      if (monitoringLabel) {
-        traffic.set(monitoringLabel, (traffic.get(monitoringLabel) ?? 0) + 1);
-      }
-    });
-
-    const topSources = Array.from(traffic.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([name, count]) => ({ name, count }));
-
-    return { counts, topSources };
-  }, [alerts]);
-
-  const monthOptions = useMemo(() => buildMonthOptions(12), []);
-  const trendData = useMemo(
-    () => buildTrendData(alerts, trendRange, trendMonth),
-    [alerts, trendRange, trendMonth]
-  );
+  useEffect(() => {
+    const current = filteredAlerts.find((alert) => alert.id === selectedAlertId);
+    setAlertNoteDraft(current?.ackNote ?? "");
+  }, [filteredAlerts, selectedAlertId]);
 
   async function checkSetup() {
     const response = await fetch("/api/auth/bootstrap");
@@ -215,6 +207,8 @@ export default function HomePage() {
       setNewAlertCount(0);
       setNotifications([]);
       setIsNotificationsOpen(false);
+      setSavedViews([]);
+      setSelectedViewId(null);
       await checkSetup();
       setIsCheckingSetup(false);
       return;
@@ -231,6 +225,15 @@ export default function HomePage() {
     }
     const data = (await response.json()) as SettingsResponse;
     setSettings(data.settings);
+  }
+
+  async function loadSavedViews() {
+    const response = await fetch("/api/views");
+    if (!response.ok) {
+      return;
+    }
+    const data = (await response.json()) as SavedViewsResponse;
+    setSavedViews(data.views ?? []);
   }
 
   async function loadAlerts() {
@@ -253,6 +256,106 @@ export default function HomePage() {
     }
     lastAlertIdsRef.current = currentIds;
     setIsLoadingAlerts(false);
+  }
+
+  function getCurrentFilters(): SavedViewFilters {
+    return {
+      searchTerm,
+      filterTags,
+      filterSource,
+      filterSeverity,
+      filterTimeRange,
+      viewMode
+    };
+  }
+
+  function applySavedView(view: SavedView) {
+    setSearchTerm(view.filters.searchTerm);
+    setFilterTags(view.filters.filterTags);
+    setFilterSource(view.filters.filterSource);
+    setFilterSeverity(view.filters.filterSeverity);
+    setFilterTimeRange(view.filters.filterTimeRange);
+    setViewMode(view.filters.viewMode);
+    setSelectedViewId(view.id);
+    setViewStatus(null);
+  }
+
+  async function handleSaveView() {
+    const name = viewName.trim();
+    if (!name) {
+      setViewStatus("View name required.");
+      return;
+    }
+    const response = await fetch("/api/views", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, filters: getCurrentFilters() })
+    });
+    if (!response.ok) {
+      const data = await response.json();
+      setViewStatus(data.error ?? "Failed to save view.");
+      return;
+    }
+    const data = (await response.json()) as SavedViewResponse;
+    setSavedViews((prev) => [data.view, ...prev]);
+    setSelectedViewId(data.view.id);
+    setViewName("");
+    setViewStatus("View saved.");
+  }
+
+  async function handleDeleteView(id: string) {
+    const response = await fetch("/api/views", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id })
+    });
+    if (!response.ok) {
+      const data = await response.json();
+      setViewStatus(data.error ?? "Failed to delete view.");
+      return;
+    }
+    setSavedViews((prev) => prev.filter((view) => view.id !== id));
+    if (selectedViewId === id) {
+      setSelectedViewId(null);
+    }
+    setViewStatus("View deleted.");
+  }
+
+  async function updateAlertState(alertId: string, status: "active" | "acknowledged" | "resolved") {
+    const response = await fetch("/api/alerts/state", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ alertId, status, note: alertNoteDraft })
+    });
+    if (!response.ok) {
+      return;
+    }
+    const data = (await response.json()) as {
+      state: {
+        alertId: string;
+        status: "active" | "acknowledged" | "resolved";
+        note: string;
+        updatedAt: string;
+        updatedBy: string | null;
+        acknowledgedAt: string | null;
+        resolvedAt: string | null;
+      };
+    };
+    setAlerts((prev) =>
+      prev.map((alert) =>
+        alert.id === data.state.alertId
+          ? {
+              ...alert,
+              ackStatus: data.state.status,
+              ackNote: data.state.note,
+              ackUpdatedAt: data.state.updatedAt,
+              ackUpdatedBy: data.state.updatedBy ?? undefined,
+              acknowledgedAt: data.state.acknowledgedAt ?? undefined,
+              resolvedAt: data.state.resolvedAt ?? undefined
+            }
+          : alert
+      )
+    );
   }
 
   async function handleLogin(event: React.FormEvent) {
@@ -301,6 +404,8 @@ export default function HomePage() {
     setNewAlertCount(0);
     setNotifications([]);
     setIsNotificationsOpen(false);
+    setSavedViews([]);
+    setSelectedViewId(null);
     await checkSetup();
     setIsCheckingSetup(false);
   }
@@ -311,8 +416,9 @@ export default function HomePage() {
         <div className="w-full max-w-4xl rounded-3xl border border-border bg-surface/90 p-10 shadow-card backdrop-blur">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="inline-flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-2xl border border-border bg-surface/90 shadow-card">
-                <svg width="22" height="22" viewBox="0 0 32 32" fill="none">
+              <span className="brand-logo flex h-10 w-10 items-center justify-center rounded-2xl border border-border bg-surface/90 shadow-card">
+                <span className="brand-logo__image" />
+                <svg width="22" height="22" viewBox="0 0 32 32" fill="none" className="brand-logo__fallback">
                   <path
                     d="M4 16h6l3-6 6 12 3-6h6"
                     stroke="currentColor"
@@ -344,9 +450,52 @@ export default function HomePage() {
                   <li>Filter, search, and refresh automatically on the dashboard.</li>
                   <li>Manage users, permissions, and data sources centrally.</li>
                 </ul>
-                <p className="mt-6 text-sm text-muted">
-                  Create the first admin account to finish setup.
-                </p>
+                <div className="mt-6 rounded-2xl border border-border bg-base/50 p-4">
+                  <p className="text-xs uppercase tracking-[0.3em] text-muted">Setup checklist</p>
+                  <ol className="mt-4 space-y-2 text-sm text-muted">
+                    <li className="flex items-center gap-2">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent text-xs font-semibold text-white">
+                        1
+                      </span>
+                      Create your admin account.
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full border border-border text-xs font-semibold text-muted">
+                        2
+                      </span>
+                      Connect data sources in Settings.
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full border border-border text-xs font-semibold text-muted">
+                        3
+                      </span>
+                      Invite teammates and assign roles.
+                    </li>
+                  </ol>
+                </div>
+                <div className="mt-6">
+                  <p className="text-xs uppercase tracking-[0.3em] text-muted">Data source guides</p>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-2xl border border-border bg-base/50 p-4">
+                      <p className="text-sm font-semibold">Prometheus + Alertmanager</p>
+                      <p className="mt-2 text-xs text-muted">
+                        Add the base URL, and PulZe will pull `/api/v2/alerts`.
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-border bg-base/50 p-4">
+                      <p className="text-sm font-semibold">Zabbix</p>
+                      <p className="mt-2 text-xs text-muted">
+                        Use the base URL and API token for JSON-RPC access.
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-border bg-base/50 p-4 sm:col-span-2">
+                      <p className="text-sm font-semibold">Uptime Kuma</p>
+                      <p className="mt-2 text-xs text-muted">
+                        Choose status page mode or API key mode and provide the slug.
+                      </p>
+                    </div>
+                  </div>
+                </div>
               </div>
               <form onSubmit={handleSetup} className="space-y-4">
                 <div className="grid gap-3 md:grid-cols-2">
@@ -434,111 +583,8 @@ export default function HomePage() {
     );
   }
 
-  const comparisonRows = [
-    { label: "Day", last: analytics.counts.lastDay, current: analytics.counts.currentDay },
-    { label: "Month", last: analytics.counts.lastMonth, current: analytics.counts.currentMonth },
-    { label: "Year", last: analytics.counts.lastYear, current: analytics.counts.currentYear }
-  ];
-  const activeDelta = formatDelta(filteredAlerts.length, analytics.counts.lastDay);
-  const dayDelta = formatDelta(analytics.counts.currentDay, analytics.counts.lastDay);
-  const monthDelta = formatDelta(analytics.counts.currentMonth, analytics.counts.lastMonth);
-  const yearDelta = formatDelta(analytics.counts.currentYear, analytics.counts.lastYear);
-  const statCards = [
-    {
-      id: "active",
-      title: "Active Alerts",
-      value: filteredAlerts.length.toLocaleString(),
-      change: activeDelta.text,
-      trend: activeDelta.trend,
-      color: "text-rose-600",
-      bg: "bg-rose-100",
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-          <path
-            d="M12 7v6"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-          />
-          <path
-            d="M12 17h.01"
-            stroke="currentColor"
-            strokeWidth="2.2"
-            strokeLinecap="round"
-          />
-          <path
-            d="M4.5 19h15L12 5 4.5 19Z"
-            stroke="currentColor"
-            strokeWidth="1.4"
-            strokeLinejoin="round"
-          />
-        </svg>
-      )
-    },
-    {
-      id: "today",
-      title: "Alerts Today",
-      value: analytics.counts.currentDay.toLocaleString(),
-      change: dayDelta.text,
-      trend: dayDelta.trend,
-      color: "text-amber-600",
-      bg: "bg-amber-100",
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-          <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.6" />
-          <path
-            d="M12 8v4l2.5 2"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-          />
-        </svg>
-      )
-    },
-    {
-      id: "month",
-      title: "Alerts This Month",
-      value: analytics.counts.currentMonth.toLocaleString(),
-      change: monthDelta.text,
-      trend: monthDelta.trend,
-      color: "text-sky-600",
-      bg: "bg-sky-100",
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-          <rect x="4" y="6" width="16" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" />
-          <path d="M4 10h16" stroke="currentColor" strokeWidth="1.6" />
-          <path d="M8 4v4M16 4v4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-        </svg>
-      )
-    },
-    {
-      id: "year",
-      title: "Alerts This Year",
-      value: analytics.counts.currentYear.toLocaleString(),
-      change: yearDelta.text,
-      trend: yearDelta.trend,
-      color: "text-emerald-600",
-      bg: "bg-emerald-100",
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-          <path
-            d="M4 16l5-5 4 4 6-7"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <path
-            d="M14 8h4v4"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-          />
-        </svg>
-      )
-    }
-  ];
-  const topSourceMax = Math.max(1, ...analytics.topSources.map((source) => source.count));
+  const selectedAlert = filteredAlerts.find((alert) => alert.id === selectedAlertId) ?? null;
+  const selectedAlertStatus = selectedAlert?.ackStatus ?? "active";
 
   return (
     <div className="min-h-screen flex bg-base">
@@ -572,11 +618,13 @@ export default function HomePage() {
                 <input
                   value={searchTerm}
                   onChange={(event) => setSearchTerm(event.target.value)}
+                  ref={searchInputRef}
                   placeholder="Search alerts..."
+                  aria-label="Search alerts"
                   className="w-full rounded-xl border border-border bg-base/60 py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
                 />
               </div>
-              <div ref={notificationsRef} className="relative">
+              <div ref={notificationsRef} className="relative z-40">
                 <button
                   type="button"
                   onClick={() => {
@@ -607,7 +655,7 @@ export default function HomePage() {
                   ) : null}
                 </button>
                 {isNotificationsOpen ? (
-                  <div className="absolute right-0 mt-3 w-80 rounded-2xl border border-border bg-surface/95 p-4 shadow-card backdrop-blur">
+                  <div className="absolute right-0 mt-3 w-80 rounded-2xl border border-border bg-surface/95 p-4 shadow-card backdrop-blur z-50">
                     <div className="flex items-center justify-between">
                       <p className="text-xs uppercase tracking-[0.2em] text-muted">Notifications</p>
                       {notifications.length > 0 ? (
@@ -667,206 +715,144 @@ export default function HomePage() {
             </div>
           </div>
 
+          <div className="sticky top-4 z-30 mt-6 rounded-2xl border border-border bg-surface/90 p-4 shadow-card backdrop-blur">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <select
+                  value={selectedViewId ?? ""}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    const view = savedViews.find((item) => item.id === value);
+                    if (view) {
+                      applySavedView(view);
+                    } else {
+                      setSelectedViewId(null);
+                    }
+                  }}
+                  className="min-w-[180px] rounded-xl border border-border bg-base/60 px-3 py-2 text-sm"
+                  aria-label="Saved views"
+                >
+                  <option value="">Saved views</option>
+                  {savedViews.map((view) => (
+                    <option key={view.id} value={view.id}>
+                      {view.name}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  value={viewName}
+                  onChange={(event) => setViewName(event.target.value)}
+                  placeholder="Save current view"
+                  aria-label="Save current view"
+                  className="min-w-[200px] flex-1 rounded-xl border border-border bg-base/60 px-3 py-2 text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={handleSaveView}
+                  className="rounded-xl border border-border px-4 py-2 text-xs uppercase tracking-[0.2em]"
+                >
+                  Save
+                </button>
+                {selectedViewId ? (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteView(selectedViewId)}
+                    className="rounded-xl border border-border px-4 py-2 text-xs uppercase tracking-[0.2em] text-muted"
+                  >
+                    Delete
+                  </button>
+                ) : null}
+              </div>
+              <div className="flex flex-wrap items-center gap-3">
+                <select
+                  value={filterTimeRange}
+                  onChange={(event) =>
+                    setFilterTimeRange(
+                      event.target.value as (typeof timeRangeOptions)[number]["value"]
+                    )
+                  }
+                  className="rounded-xl border border-border bg-base/60 px-3 py-2 text-sm"
+                  aria-label="Time range filter"
+                >
+                  {timeRangeOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={filterSource}
+                  onChange={(event) =>
+                    setFilterSource(event.target.value as (typeof sourceOptions)[number])
+                  }
+                  className="rounded-xl border border-border bg-base/60 px-3 py-2 text-sm"
+                  aria-label="Source filter"
+                >
+                  {sourceOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={filterSeverity}
+                  onChange={(event) =>
+                    setFilterSeverity(event.target.value as (typeof severityOptions)[number])
+                  }
+                  className="rounded-xl border border-border bg-base/60 px-3 py-2 text-sm"
+                  aria-label="Severity filter"
+                >
+                  {severityOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  value={filterTags}
+                  onChange={(event) => setFilterTags(event.target.value)}
+                  placeholder="Tags (comma-separated)"
+                  aria-label="Tag filter"
+                  className="min-w-[220px] flex-1 rounded-xl border border-border bg-base/60 px-3 py-2 text-sm"
+                />
+              </div>
+              <div className="ml-auto flex flex-wrap items-center gap-3">
+                {viewStatus ? (
+                  <span className="text-xs uppercase tracking-[0.2em] text-muted">{viewStatus}</span>
+                ) : null}
+                <span className="text-xs uppercase tracking-[0.2em] text-muted">
+                  Auto refresh {settings.refreshInterval}s
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void loadAlerts()}
+                  className="rounded-xl border border-border px-4 py-2 text-xs uppercase tracking-[0.2em]"
+                >
+                  {isLoadingAlerts ? "Refreshing" : "Refresh"}
+                </button>
+              </div>
+            </div>
+          </div>
+
           <div className="mt-6 rounded-2xl border border-border bg-surface/90 p-4 shadow-card backdrop-blur">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
-              <p className="text-xs uppercase tracking-[0.3em] text-muted">Active Alerts</p>
-              <div className="flex flex-wrap items-baseline gap-3">
-                <h3 className="text-3xl font-semibold">{filteredAlerts.length}</h3>
-                <span className="text-sm text-muted">Auto refresh {settings.refreshInterval}s</span>
-              </div>
-              {errors.length > 0 ? (
-                <div className="mt-2 text-sm text-red-500">
-                  {errors.map((error) => `${error.source}: ${error.message}`).join(" | ")}
+                <p className="text-xs uppercase tracking-[0.3em] text-muted">Active Alerts</p>
+                <div className="flex flex-wrap items-baseline gap-3">
+                  <h3 className="text-3xl font-semibold">{filteredAlerts.length}</h3>
+                  <span className="text-sm text-muted">
+                    {filterTimeRange === "all" ? "All time" : "Filtered"}
+                  </span>
                 </div>
-              ) : null}
-              </div>
-              <div className="flex flex-wrap items-center gap-3">
-              <select
-                value={filterSource}
-                onChange={(event) => setFilterSource(event.target.value as (typeof sourceOptions)[number])}
-                className="rounded-xl border border-border bg-base/60 px-3 py-2 text-sm"
-              >
-                {sourceOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={filterSeverity}
-                onChange={(event) =>
-                  setFilterSeverity(event.target.value as (typeof severityOptions)[number])
-                }
-                className="rounded-xl border border-border bg-base/60 px-3 py-2 text-sm"
-              >
-                {severityOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {option}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={() => void loadAlerts()}
-                className="rounded-xl border border-border px-4 py-2 text-xs uppercase tracking-[0.2em]"
-              >
-                {isLoadingAlerts ? "Refreshing" : "Refresh"}
-              </button>
-            </div>
-            </div>
-          </div>
-
-          <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            {statCards.map((card) => (
-              <div
-                key={card.id}
-                className="rounded-2xl border border-border bg-surface/90 p-5 shadow-card backdrop-blur"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div
-                    className={`flex h-12 w-12 items-center justify-center rounded-2xl ${card.bg} ${card.color}`}
-                  >
-                    {card.icon}
+                {errors.length > 0 ? (
+                  <div className="mt-2 text-sm text-red-500">
+                    {errors.map((error) => `${error.source}: ${error.message}`).join(" | ")}
                   </div>
-                  <div
-                    className={clsx(
-                      "flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold",
-                      card.trend === "up"
-                        ? "bg-emerald-50 text-emerald-600"
-                        : "bg-rose-50 text-rose-600"
-                    )}
-                  >
-                    {card.trend === "up" ? (
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                        <path
-                          d="M7 14l5-5 5 5"
-                          stroke="currentColor"
-                          strokeWidth="1.6"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    ) : (
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                        <path
-                          d="M7 10l5 5 5-5"
-                          stroke="currentColor"
-                          strokeWidth="1.6"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    )}
-                    {card.change}
-                  </div>
-                </div>
-                <p className="mt-4 text-sm text-muted">{card.title}</p>
-                <p className="mt-1 text-2xl font-semibold">{card.value}</p>
+                ) : null}
               </div>
-            ))}
-          </div>
-
-          <div className="mt-8 grid gap-6 lg:grid-cols-[2fr_1fr]">
-            <div className="rounded-2xl border border-border bg-surface/90 p-6 shadow-card backdrop-blur">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div>
-                  <h3 className="text-lg font-semibold">Alert Trendline</h3>
-                  <p className="text-sm text-muted">Monitor alert volume over time.</p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  {trendRanges.map((range) => (
-                    <button
-                      key={range.value}
-                      type="button"
-                      onClick={() => setTrendRange(range.value)}
-                      className={clsx(
-                        "rounded-lg border px-3 py-1 text-xs uppercase tracking-[0.2em]",
-                        trendRange === range.value
-                          ? "border-accent bg-accent text-white"
-                          : "border-border text-muted"
-                      )}
-                    >
-                      {range.label}
-                    </button>
-                  ))}
-                  {trendRange === "month" ? (
-                    <select
-                      value={trendMonth}
-                      onChange={(event) => setTrendMonth(event.target.value)}
-                      className="rounded-lg border border-border bg-base/60 px-3 py-1 text-xs uppercase tracking-[0.2em]"
-                    >
-                      {monthOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  ) : null}
-                </div>
+              <div className="text-xs uppercase tracking-[0.2em] text-muted">
+                Press <span className="font-semibold">/</span> to search, Esc to clear
               </div>
-              <AlertChart data={trendData} />
-              <div className="mt-6 grid gap-4 sm:grid-cols-3">
-                {comparisonRows.map((row) => (
-                  <div
-                    key={row.label}
-                    className="rounded-2xl border border-border bg-base/60 p-4"
-                  >
-                    <p className="text-xs uppercase tracking-[0.2em] text-muted">{row.label}</p>
-                    <div className="mt-3 flex items-center justify-between text-sm">
-                      <span className="text-muted">Last</span>
-                      <span className="font-semibold">{row.last}</span>
-                    </div>
-                    <div className="mt-1 flex items-center justify-between text-sm">
-                      <span className="text-muted">Current</span>
-                      <span className="font-semibold">{row.current}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-border bg-surface/90 p-6 shadow-card backdrop-blur">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="text-lg font-semibold">Top Instances</h3>
-                  <p className="text-sm text-muted">Most active monitoring labels.</p>
-                </div>
-                <Link
-                  href="/analytics"
-                  className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em]"
-                >
-                  View Report
-                </Link>
-              </div>
-              <div className="mt-6 space-y-4">
-                {analytics.topSources.length === 0 ? (
-                  <p className="text-sm text-muted">No monitoring labels captured yet.</p>
-                ) : (
-                  analytics.topSources.map((source, index) => (
-                    <div key={`${source.name}-${index}`}>
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="font-medium">{source.name}</span>
-                        <span className="text-muted">{source.count}</span>
-                      </div>
-                      <div className="mt-2 h-2 w-full rounded-full bg-base/60">
-                        <div
-                          className="h-2 rounded-full bg-accent"
-                          style={{
-                            width: `${Math.round((source.count / topSourceMax) * 100)}%`
-                          }}
-                        />
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-              <Link
-                href="/analytics"
-                className="mt-6 inline-flex items-center justify-center rounded-xl border border-border px-4 py-2 text-xs uppercase tracking-[0.2em] text-muted"
-              >
-                View Detailed Report
-              </Link>
             </div>
           </div>
 
@@ -896,6 +882,16 @@ export default function HomePage() {
                   )}
                 >
                   Table
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode("split")}
+                  className={clsx(
+                    "rounded-full px-3 py-1",
+                    viewMode === "split" ? "bg-accent text-white" : "text-muted"
+                  )}
+                >
+                  Split
                 </button>
               </div>
               <span className="text-xs uppercase tracking-[0.2em] text-muted">
@@ -927,6 +923,18 @@ export default function HomePage() {
                       {alert.source}
                     </span>
                     <p className="text-xs uppercase tracking-[0.3em] text-muted">{alert.severity}</p>
+                    {alert.ackStatus && alert.ackStatus !== "active" ? (
+                      <span
+                        className={clsx(
+                          "mt-2 inline-flex rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.2em]",
+                          alert.ackStatus === "acknowledged"
+                            ? "bg-blue-500/15 text-blue-600"
+                            : "bg-slate-500/15 text-slate-600"
+                        )}
+                      >
+                        {alert.ackStatus}
+                      </span>
+                    ) : null}
                     <h3 className="mt-3 text-lg font-semibold">{alert.name}</h3>
                     {alert.instance ? (
                       <p className="mt-2 text-xs uppercase tracking-[0.2em] text-muted">
@@ -941,13 +949,14 @@ export default function HomePage() {
                 ))
               )}
             </div>
-          ) : (
+          ) : viewMode === "table" ? (
             <div className="mt-4 overflow-hidden rounded-2xl border border-border bg-surface/90 shadow-card">
               <table className="w-full text-sm">
                 <thead className="bg-base/60 text-xs uppercase tracking-[0.2em] text-muted">
                   <tr>
                     <th className="px-4 py-3 text-left">Instance label</th>
                     <th className="px-4 py-3 text-left">Severity</th>
+                    <th className="px-4 py-3 text-left">State</th>
                     <th className="px-4 py-3 text-left">Host</th>
                     <th className="px-4 py-3 text-left">Alert</th>
                     <th className="px-4 py-3 text-left">Event time</th>
@@ -956,19 +965,13 @@ export default function HomePage() {
                 <tbody>
                   {filteredAlerts.length === 0 ? (
                     <tr>
-                      <td
-                        colSpan={5}
-                        className="px-4 py-6 text-center text-sm text-muted"
-                      >
+                      <td colSpan={6} className="px-4 py-6 text-center text-sm text-muted">
                         No alerts match your filters.
                       </td>
                     </tr>
                   ) : (
                     filteredAlerts.map((alert) => (
-                      <tr
-                        key={alert.id}
-                        className="border-t border-border bg-base/40"
-                      >
+                      <tr key={alert.id} className="border-t border-border bg-base/40">
                         <td className="px-4 py-3 font-semibold">
                           {alert.sourceLabel || alert.source}
                         </td>
@@ -986,6 +989,20 @@ export default function HomePage() {
                             {alert.severity}
                           </span>
                         </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={clsx(
+                              "rounded-full px-3 py-1 text-xs uppercase tracking-[0.2em]",
+                              alert.ackStatus === "acknowledged"
+                                ? "bg-blue-500/15 text-blue-600"
+                                : alert.ackStatus === "resolved"
+                                  ? "bg-slate-500/15 text-slate-600"
+                                  : "bg-emerald-400/15 text-emerald-500"
+                            )}
+                          >
+                            {alert.ackStatus ?? "active"}
+                          </span>
+                        </td>
                         <td className="px-4 py-3 text-muted">{alert.instance || "-"}</td>
                         <td className="px-4 py-3">{alert.name}</td>
                         <td className="px-4 py-3 text-muted">
@@ -996,6 +1013,170 @@ export default function HomePage() {
                   )}
                 </tbody>
               </table>
+            </div>
+          ) : (
+            <div className="mt-4 grid gap-6 lg:grid-cols-[1fr_1.2fr]">
+              <div className="rounded-2xl border border-border bg-surface/90 p-4 shadow-card">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs uppercase tracking-[0.2em] text-muted">Alert list</p>
+                  <span className="text-xs uppercase tracking-[0.2em] text-muted">
+                    {filteredAlerts.length} results
+                  </span>
+                </div>
+                {filteredAlerts.length === 0 ? (
+                  <div className="mt-4 rounded-xl border border-border bg-base/40 p-6 text-center text-sm text-muted">
+                    No alerts match your filters.
+                  </div>
+                ) : (
+                  <div className="mt-4 space-y-3">
+                    {filteredAlerts.map((alert) => (
+                      <button
+                        key={alert.id}
+                        type="button"
+                        onClick={() => setSelectedAlertId(alert.id)}
+                        className={clsx(
+                          "w-full rounded-xl border px-4 py-3 text-left transition",
+                          selectedAlertId === alert.id
+                            ? "border-accent bg-accent/10"
+                            : "border-border bg-base/40 hover:border-accent/40"
+                        )}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-sm font-semibold">{alert.name}</span>
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={clsx(
+                                "rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.2em]",
+                                alert.severity === "critical"
+                                  ? "bg-red-500/15 text-red-500"
+                                  : alert.severity === "warning"
+                                    ? "bg-yellow-400/20 text-yellow-600"
+                                    : "bg-emerald-400/15 text-emerald-500"
+                              )}
+                            >
+                              {alert.severity}
+                            </span>
+                            {alert.ackStatus && alert.ackStatus !== "active" ? (
+                              <span
+                                className={clsx(
+                                  "rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.2em]",
+                                  alert.ackStatus === "acknowledged"
+                                    ? "bg-blue-500/15 text-blue-600"
+                                    : "bg-slate-500/15 text-slate-600"
+                                )}
+                              >
+                                {alert.ackStatus}
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+                        <div className="mt-2 flex items-center justify-between text-xs text-muted">
+                          <span>{alert.sourceLabel || alert.source}</span>
+                          <span>{new Date(alert.timestamp).toLocaleTimeString()}</span>
+                        </div>
+                        {alert.instance ? (
+                          <p className="mt-2 text-xs text-muted">{alert.instance}</p>
+                        ) : null}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="rounded-2xl border border-border bg-surface/90 p-6 shadow-card">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs uppercase tracking-[0.2em] text-muted">Alert detail</p>
+                  {selectedAlert ? (
+                    <span className="rounded-full bg-accentSoft px-3 py-1 text-xs font-semibold text-accent">
+                      {selectedAlert.source}
+                    </span>
+                  ) : null}
+                </div>
+                {selectedAlert ? (
+                  <div className="mt-4 space-y-4">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.3em] text-muted">
+                        {selectedAlert.severity}
+                      </p>
+                      <h3 className="mt-2 text-2xl font-semibold">{selectedAlert.name}</h3>
+                      {selectedAlert.instance ? (
+                        <p className="mt-1 text-sm text-muted">{selectedAlert.instance}</p>
+                      ) : null}
+                    </div>
+                    <p className="text-sm text-muted">{selectedAlert.message}</p>
+                    <div className="rounded-xl border border-border bg-base/40 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="text-xs uppercase tracking-[0.2em] text-muted">Status</p>
+                          <p className="mt-2 text-sm font-semibold capitalize">
+                            {selectedAlertStatus}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => updateAlertState(selectedAlert.id, "acknowledged")}
+                            className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em]"
+                          >
+                            Acknowledge
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => updateAlertState(selectedAlert.id, "resolved")}
+                            className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em]"
+                          >
+                            Resolve
+                          </button>
+                          {selectedAlertStatus !== "active" ? (
+                            <button
+                              type="button"
+                              onClick={() => updateAlertState(selectedAlert.id, "active")}
+                              className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em] text-muted"
+                            >
+                              Reopen
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                      <div className="mt-4 space-y-2">
+                        <label className="text-xs uppercase tracking-[0.2em] text-muted">
+                          Note
+                        </label>
+                        <textarea
+                          value={alertNoteDraft}
+                          onChange={(event) => setAlertNoteDraft(event.target.value)}
+                          placeholder="Add acknowledgment notes..."
+                          className="h-24 w-full rounded-xl border border-border bg-base/60 px-3 py-2 text-sm"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => updateAlertState(selectedAlert.id, selectedAlertStatus)}
+                          className="rounded-full border border-border px-4 py-2 text-xs uppercase tracking-[0.2em]"
+                        >
+                          Save Note
+                        </button>
+                      </div>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-xl border border-border bg-base/40 p-3">
+                        <p className="text-xs uppercase tracking-[0.2em] text-muted">Source</p>
+                        <p className="mt-2 text-sm font-semibold">
+                          {selectedAlert.sourceLabel || selectedAlert.source}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-border bg-base/40 p-3">
+                        <p className="text-xs uppercase tracking-[0.2em] text-muted">Event time</p>
+                        <p className="mt-2 text-sm font-semibold">
+                          {new Date(selectedAlert.timestamp).toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-4 rounded-xl border border-border bg-base/40 p-6 text-center text-sm text-muted">
+                    Select an alert from the list to view details.
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </main>

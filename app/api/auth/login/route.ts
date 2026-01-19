@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 
-import { createSession, getUserByUsername } from "../../../../lib/db";
+import { createSession, getUserByUsername, logAudit } from "../../../../lib/db";
 
 export const runtime = "nodejs";
 
@@ -19,6 +19,7 @@ export async function POST(request: Request) {
   }
 
   const session = createSession(user.id);
+  logAudit("auth.login", user.id, { username: user.username });
   const response = NextResponse.json({
     user: {
       id: user.id,

@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
 
 import { getSessionUser } from "../../../lib/auth";
-import { createUser, getUserById, getUserByUsername, listUsers, updateUser } from "../../../lib/db";
+import {
+  createUser,
+  getUserById,
+  getUserByUsername,
+  listUsers,
+  logAudit,
+  updateUser
+} from "../../../lib/db";
 
 export const runtime = "nodejs";
 
@@ -59,6 +66,12 @@ export async function POST(request: Request) {
     role: payload.role
   });
 
+  logAudit("users.create", user.id, {
+    userId: created.id,
+    username: created.username,
+    role: created.role
+  });
+
   return NextResponse.json({ user: toPublicUser(created) });
 }
 
@@ -96,6 +109,12 @@ export async function PATCH(request: Request) {
     email: payload.email?.trim(),
     avatarUrl: payload.avatarUrl?.trim(),
     role: payload.role
+  });
+
+  logAudit("users.update", user.id, {
+    userId: updated.id,
+    username: updated.username,
+    role: updated.role
   });
 
   return NextResponse.json({ user: toPublicUser(updated) });

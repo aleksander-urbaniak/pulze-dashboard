@@ -77,8 +77,9 @@ export default function Sidebar({ user, onLogout, settingsTabs }: SidebarProps) 
   return (
     <aside className="flex min-h-screen w-64 flex-col border-r border-border bg-surface/90 px-5 py-6 shadow-card">
       <Link href="/" className="group flex items-center gap-3">
-        <span className="flex h-10 w-10 items-center justify-center rounded-2xl border border-border bg-base/80">
-          <svg width="22" height="22" viewBox="0 0 32 32" fill="none">
+        <span className="brand-logo flex h-10 w-10 items-center justify-center rounded-2xl border border-border bg-base/80">
+          <span className="brand-logo__image" />
+          <svg width="22" height="22" viewBox="0 0 32 32" fill="none" className="brand-logo__fallback">
             <path
               d="M4 16h6l3-6 6 12 3-6h6"
               stroke="currentColor"

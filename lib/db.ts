@@ -4,7 +4,18 @@ import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 
-import type { KumaSource, PrometheusSource, Settings, User, ZabbixSource } from "./types";
+import type {
+  AppearanceSettings,
+  AuditLogEntry,
+  KumaSource,
+  PrometheusSource,
+  SavedView,
+  SavedViewFilters,
+  Settings,
+  User,
+  ZabbixSource
+} from "./types";
+import { defaultAppearance, normalizeAppearanceSettings } from "./appearance";
 
 export interface UserRow extends User {
   passwordHash: string;
@@ -18,11 +29,27 @@ export interface SettingsRow extends Settings {
   updatedAt: string;
 }
 
+export interface AlertStateRow {
+  alertId: string;
+  status: "active" | "acknowledged" | "resolved";
+  note: string;
+  updatedBy: string | null;
+  updatedAt: string;
+  acknowledgedAt: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+}
+
+export interface SavedViewRow extends SavedView {}
+
+export interface AuditLogRow extends AuditLogEntry {}
+
 const defaultSettings: Settings = {
   prometheusSources: [],
   zabbixSources: [],
   kumaSources: [],
-  refreshInterval: 30
+  refreshInterval: 30,
+  appearance: defaultAppearance
 };
 
 const legacyDefaults = {
@@ -111,6 +138,15 @@ function normalizeKumaSource(input: Partial<KumaSource>): KumaSource {
   };
 }
 
+const defaultSavedViewFilters: SavedViewFilters = {
+  searchTerm: "",
+  filterTags: "",
+  filterSource: "All",
+  filterSeverity: "All",
+  filterTimeRange: "24h",
+  viewMode: "cards"
+};
+
 function coercePrometheusSources(raw: unknown): PrometheusSource[] {
   const list = Array.isArray(raw) ? raw : [];
   return list.map((item) => normalizePrometheusSource(item as Partial<PrometheusSource>));
@@ -162,15 +198,45 @@ function migrate() {
       prometheus_sources TEXT NOT NULL DEFAULT '[]',
       zabbix_sources TEXT NOT NULL DEFAULT '[]',
       kuma_sources TEXT NOT NULL DEFAULT '[]',
+      appearance_json TEXT NOT NULL DEFAULT '{}',
       refresh_interval INTEGER NOT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS alert_states (
+      alert_id TEXT PRIMARY KEY,
+      status TEXT NOT NULL,
+      note TEXT NOT NULL DEFAULT '',
+      updated_by TEXT,
+      updated_at TEXT NOT NULL,
+      acknowledged_at TEXT,
+      resolved_at TEXT,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS saved_views (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      filters_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id TEXT PRIMARY KEY,
+      user_id TEXT,
+      action TEXT NOT NULL,
+      details TEXT NOT NULL,
+      created_at TEXT NOT NULL
     );
   `);
 
   ensureColumn("settings", "prometheus_sources", "TEXT NOT NULL DEFAULT '[]'");
   ensureColumn("settings", "zabbix_sources", "TEXT NOT NULL DEFAULT '[]'");
   ensureColumn("settings", "kuma_sources", "TEXT NOT NULL DEFAULT '[]'");
+  ensureColumn("settings", "appearance_json", "TEXT NOT NULL DEFAULT '{}'");
   ensureColumn("users", "avatar_url", "TEXT NOT NULL DEFAULT ''");
 }
 
@@ -195,6 +261,11 @@ function toSettings(row: any): SettingsRow {
   const rawPrometheus = safeJsonParse<unknown>(row.prometheus_sources, []);
   const rawZabbix = safeJsonParse<unknown>(row.zabbix_sources, []);
   const rawKuma = safeJsonParse<unknown>(row.kuma_sources, []);
+  const rawAppearance = safeJsonParse<AppearanceSettings>(
+    row.appearance_json,
+    defaultSettings.appearance
+  );
+  const appearance = normalizeAppearanceSettings(rawAppearance);
   const prometheusSources = coercePrometheusSources(rawPrometheus);
   const zabbixSources = coerceZabbixSources(rawZabbix);
   const kumaSources = coerceKumaSources(rawKuma);
@@ -239,6 +310,19 @@ function toSettings(row: any): SettingsRow {
     zabbixSources,
     kumaSources,
     refreshInterval: row.refresh_interval,
+    appearance,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function toSavedView(row: any): SavedViewRow {
+  const filters = safeJsonParse<SavedViewFilters>(row.filters_json, defaultSavedViewFilters);
+  return {
+    id: row.id,
+    userId: row.user_id,
+    name: row.name,
+    filters,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -263,6 +347,7 @@ function seed() {
         prometheus_sources,
         zabbix_sources,
         kuma_sources,
+        appearance_json,
         refresh_interval,
         created_at,
         updated_at
@@ -280,6 +365,7 @@ function seed() {
         @prometheusSources,
         @zabbixSources,
         @kumaSources,
+        @appearanceJson,
         @refreshInterval,
         @createdAt,
         @updatedAt
@@ -289,6 +375,7 @@ function seed() {
       prometheusSources: JSON.stringify(defaultSettings.prometheusSources),
       zabbixSources: JSON.stringify(defaultSettings.zabbixSources),
       kumaSources: JSON.stringify(defaultSettings.kumaSources),
+      appearanceJson: JSON.stringify(defaultSettings.appearance),
       refreshInterval: defaultSettings.refreshInterval,
       createdAt: now,
       updatedAt: now
@@ -419,7 +506,8 @@ export function updateSettings(updates: Partial<Settings>): SettingsRow {
     prometheusSources: updates.prometheusSources ?? current.prometheusSources,
     zabbixSources: updates.zabbixSources ?? current.zabbixSources,
     kumaSources: updates.kumaSources ?? current.kumaSources,
-    refreshInterval: updates.refreshInterval ?? current.refreshInterval
+    refreshInterval: updates.refreshInterval ?? current.refreshInterval,
+    appearance: updates.appearance ?? current.appearance
   };
 
   const normalizedPrometheus = next.prometheusSources.map(normalizePrometheusSource);
@@ -444,6 +532,7 @@ export function updateSettings(updates: Partial<Settings>): SettingsRow {
       prometheus_sources = @prometheusSources,
       zabbix_sources = @zabbixSources,
       kuma_sources = @kumaSources,
+      appearance_json = @appearanceJson,
       refresh_interval = @refreshInterval,
       updated_at = @updatedAt
      WHERE id = 1`
@@ -460,11 +549,178 @@ export function updateSettings(updates: Partial<Settings>): SettingsRow {
     prometheusSources: JSON.stringify(normalizedPrometheus),
     zabbixSources: JSON.stringify(normalizedZabbix),
     kumaSources: JSON.stringify(normalizedKuma),
+    appearanceJson: JSON.stringify(next.appearance),
     refreshInterval: next.refreshInterval,
     updatedAt: now
   });
 
   return getSettings();
+}
+
+export function getAlertStatesByIds(alertIds: string[]): Map<string, AlertStateRow> {
+  if (alertIds.length === 0) {
+    return new Map();
+  }
+  const placeholders = alertIds.map(() => "?").join(", ");
+  const rows = db
+    .prepare(
+      `SELECT * FROM alert_states WHERE alert_id IN (${placeholders})`
+    )
+    .all(...alertIds) as Array<any>;
+  const map = new Map<string, AlertStateRow>();
+  rows.forEach((row) => {
+    map.set(row.alert_id, {
+      alertId: row.alert_id,
+      status: row.status,
+      note: row.note ?? "",
+      updatedBy: row.updated_by ?? null,
+      updatedAt: row.updated_at,
+      acknowledgedAt: row.acknowledged_at ?? null,
+      resolvedAt: row.resolved_at ?? null,
+      createdAt: row.created_at
+    });
+  });
+  return map;
+}
+
+export function upsertAlertState(params: {
+  alertId: string;
+  status: "active" | "acknowledged" | "resolved";
+  note: string;
+  userId: string | null;
+}): AlertStateRow {
+  const now = new Date().toISOString();
+  const acknowledgedAt = params.status === "acknowledged" ? now : null;
+  const resolvedAt = params.status === "resolved" ? now : null;
+  db.prepare(
+    `INSERT INTO alert_states (
+        alert_id,
+        status,
+        note,
+        updated_by,
+        updated_at,
+        acknowledged_at,
+        resolved_at,
+        created_at
+      ) VALUES (
+        @alertId,
+        @status,
+        @note,
+        @updatedBy,
+        @updatedAt,
+        @acknowledgedAt,
+        @resolvedAt,
+        @createdAt
+      )
+      ON CONFLICT(alert_id) DO UPDATE SET
+        status = excluded.status,
+        note = excluded.note,
+        updated_by = excluded.updated_by,
+        updated_at = excluded.updated_at,
+        acknowledged_at = excluded.acknowledged_at,
+        resolved_at = excluded.resolved_at`
+  ).run({
+    alertId: params.alertId,
+    status: params.status,
+    note: params.note,
+    updatedBy: params.userId,
+    updatedAt: now,
+    acknowledgedAt,
+    resolvedAt,
+    createdAt: now
+  });
+  const row = db
+    .prepare("SELECT * FROM alert_states WHERE alert_id = ?")
+    .get(params.alertId) as any;
+  return {
+    alertId: row.alert_id,
+    status: row.status,
+    note: row.note ?? "",
+    updatedBy: row.updated_by ?? null,
+    updatedAt: row.updated_at,
+    acknowledgedAt: row.acknowledged_at ?? null,
+    resolvedAt: row.resolved_at ?? null,
+    createdAt: row.created_at
+  };
+}
+
+export function resolveMissingAlertStates(activeAlertIds: string[]) {
+  const now = new Date().toISOString();
+  if (activeAlertIds.length === 0) {
+    db.prepare(
+      `UPDATE alert_states
+        SET status = 'resolved',
+            resolved_at = @resolvedAt,
+            updated_at = @updatedAt
+        WHERE status != 'resolved'`
+    ).run({ resolvedAt: now, updatedAt: now });
+    return;
+  }
+  const placeholders = activeAlertIds.map(() => "?").join(", ");
+  db.prepare(
+    `UPDATE alert_states
+      SET status = 'resolved',
+          resolved_at = ?,
+          updated_at = ?
+      WHERE status != 'resolved' AND alert_id NOT IN (${placeholders})`
+  ).run(now, now, ...activeAlertIds);
+}
+
+export function listSavedViews(userId: string): SavedViewRow[] {
+  const rows = db
+    .prepare("SELECT * FROM saved_views WHERE user_id = ? ORDER BY updated_at DESC")
+    .all(userId) as Array<any>;
+  return rows.map(toSavedView);
+}
+
+export function createSavedView(
+  userId: string,
+  name: string,
+  filters: SavedViewFilters
+): SavedViewRow {
+  const now = new Date().toISOString();
+  const id = crypto.randomUUID();
+  db.prepare(
+    `INSERT INTO saved_views (id, user_id, name, filters_json, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)`
+  ).run(id, userId, name, JSON.stringify(filters), now, now);
+  const row = db.prepare("SELECT * FROM saved_views WHERE id = ?").get(id);
+  return toSavedView(row);
+}
+
+export function deleteSavedView(userId: string, id: string) {
+  db.prepare("DELETE FROM saved_views WHERE id = ? AND user_id = ?").run(id, userId);
+}
+
+export function logAudit(action: string, userId: string | null, details: Record<string, unknown>) {
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO audit_log (id, user_id, action, details, created_at)
+     VALUES (?, ?, ?, ?, ?)`
+  ).run(crypto.randomUUID(), userId, action, JSON.stringify(details ?? {}), now);
+}
+
+export function listAuditLogs(limit = 100): Array<
+  AuditLogEntry & { userName: string | null; userEmail: string | null }
+> {
+  const rows = db
+    .prepare(
+      `SELECT audit_log.*, users.first_name, users.last_name, users.email
+       FROM audit_log
+       LEFT JOIN users ON users.id = audit_log.user_id
+       ORDER BY created_at DESC
+       LIMIT ?`
+    )
+    .all(limit) as Array<any>;
+  return rows.map((row) => ({
+    id: row.id,
+    userId: row.user_id ?? null,
+    action: row.action,
+    details: row.details,
+    createdAt: row.created_at,
+    userName: row.first_name || row.last_name ? `${row.first_name ?? ""} ${row.last_name ?? ""}`.trim() : null,
+    userEmail: row.email ?? null
+  }));
 }
 
 export function createSession(userId: string, ttlHours = 24 * 7) {

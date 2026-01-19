@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 
 import { getSessionUser } from "../../../../lib/auth";
-import { getUserByUsername, updateUser } from "../../../../lib/db";
+import { getUserByUsername, logAudit, updateUser } from "../../../../lib/db";
 
 export const runtime = "nodejs";
 
@@ -36,6 +36,11 @@ export async function PATCH(request: Request) {
     email: payload.email?.trim(),
     avatarUrl: payload.avatarUrl?.trim(),
     passwordHash
+  });
+
+  logAudit("profile.update", user.id, {
+    userId: user.id,
+    fields: Object.keys(payload).filter((key) => key !== "password")
   });
 
   return NextResponse.json({

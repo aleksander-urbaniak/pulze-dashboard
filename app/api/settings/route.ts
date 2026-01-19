@@ -2,8 +2,17 @@ import crypto from "crypto";
 import { NextResponse } from "next/server";
 
 import { getSessionUser } from "../../../lib/auth";
-import { getSettings, updateSettings } from "../../../lib/db";
-import type { KumaSource, PrometheusSource, ZabbixSource } from "../../../lib/types";
+import { getSettings, logAudit, updateSettings } from "../../../lib/db";
+import type {
+  AppearanceSettings,
+  BrandingSettings,
+  BackgroundSettings,
+  KumaSource,
+  PrometheusSource,
+  ThemePalette,
+  ZabbixSource
+} from "../../../lib/types";
+import { defaultAppearance } from "../../../lib/appearance";
 
 export const runtime = "nodejs";
 
@@ -47,7 +56,63 @@ export async function PUT(request: Request) {
     zabbixSources: ZabbixSource[];
     kumaSources: KumaSource[];
     refreshInterval: number;
+    appearance: AppearanceSettings;
   }>;
+
+  function normalizeHex(value: unknown, fallback: string) {
+    if (typeof value !== "string") {
+      return fallback;
+    }
+    const trimmed = value.trim();
+    const hex = trimmed.startsWith("#") ? trimmed.slice(1) : trimmed;
+    if (/^[0-9a-fA-F]{6}$/.test(hex)) {
+      return `#${hex.toUpperCase()}`;
+    }
+    if (/^[0-9a-fA-F]{3}$/.test(hex)) {
+      const expanded = hex
+        .split("")
+        .map((char) => char + char)
+        .join("");
+      return `#${expanded.toUpperCase()}`;
+    }
+    return fallback;
+  }
+
+  function normalizePalette(input: ThemePalette, fallback: ThemePalette): ThemePalette {
+    return {
+      base: normalizeHex(input.base, fallback.base),
+      surface: normalizeHex(input.surface, fallback.surface),
+      text: normalizeHex(input.text, fallback.text),
+      muted: normalizeHex(input.muted, fallback.muted),
+      accent: normalizeHex(input.accent, fallback.accent),
+      accentSoft: normalizeHex(input.accentSoft, fallback.accentSoft),
+      border: normalizeHex(input.border, fallback.border)
+    };
+  }
+
+  function normalizeBranding(input: BrandingSettings, fallback: BrandingSettings): BrandingSettings {
+    return {
+      logoUrl: typeof input.logoUrl === "string" ? input.logoUrl.trim() : fallback.logoUrl,
+      faviconUrl: typeof input.faviconUrl === "string" ? input.faviconUrl.trim() : fallback.faviconUrl
+    };
+  }
+
+  function normalizeBackground(
+    input: BackgroundSettings,
+    fallback: BackgroundSettings
+  ): BackgroundSettings {
+    const clamp = (value: unknown, fallbackValue: number) => {
+      if (typeof value !== "number" || !Number.isFinite(value)) {
+        return fallbackValue;
+      }
+      return Math.max(0, Math.min(100, value));
+    };
+    return {
+      gradient: clamp(input.gradient, fallback.gradient),
+      glow: clamp(input.glow, fallback.glow),
+      noise: clamp(input.noise, fallback.noise)
+    };
+  }
 
   const current = getSettings();
   const prometheusSources = (Array.isArray(payload.prometheusSources)
@@ -89,6 +154,19 @@ export async function PUT(request: Request) {
   const safeRefreshInterval = Number.isFinite(refreshInterval)
     ? Math.max(5, refreshInterval)
     : 30;
+  const appearancePayload = payload.appearance ?? current.appearance ?? defaultAppearance;
+  const appearance: AppearanceSettings = {
+    light: normalizePalette(appearancePayload.light, defaultAppearance.light),
+    dark: normalizePalette(appearancePayload.dark, defaultAppearance.dark),
+    branding: normalizeBranding(
+      appearancePayload.branding ?? defaultAppearance.branding,
+      defaultAppearance.branding
+    ),
+    background: normalizeBackground(
+      appearancePayload.background ?? defaultAppearance.background,
+      defaultAppearance.background
+    )
+  };
   const normalizedPrometheus = prometheusSources.filter((source) => source.url);
   const normalizedZabbix = zabbixSources.filter((source) => source.url);
   const normalizedKuma = kumaSources.filter((source) => source.baseUrl);
@@ -108,6 +186,14 @@ export async function PUT(request: Request) {
     prometheusSources: normalizedPrometheus,
     zabbixSources: normalizedZabbix,
     kumaSources: normalizedKuma,
+    refreshInterval: safeRefreshInterval,
+    appearance
+  });
+
+  logAudit("settings.update", user.id, {
+    prometheusCount: normalizedPrometheus.length,
+    zabbixCount: normalizedZabbix.length,
+    kumaCount: normalizedKuma.length,
     refreshInterval: safeRefreshInterval
   });
 

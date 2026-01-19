@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { fetchKumaAlerts, fetchPrometheusAlerts, fetchZabbixAlerts } from "../../../lib/alerts";
-import { getSettings } from "../../../lib/db";
+import { getAlertStatesByIds, getSettings, resolveMissingAlertStates } from "../../../lib/db";
 
 export const runtime = "nodejs";
 
@@ -26,7 +26,33 @@ export async function GET() {
     }
   });
 
-  alerts.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  const alertIds = alerts.map((alert) => alert.id);
+  const stateMap = getAlertStatesByIds(alertIds);
+  resolveMissingAlertStates(alertIds);
 
-  return NextResponse.json({ alerts, errors }, { headers: { "Cache-Control": "no-store" } });
+  const mergedAlerts = alerts.map((alert) => {
+    const state = stateMap.get(alert.id);
+    if (state) {
+      return {
+        ...alert,
+        ackStatus: state.status,
+        ackNote: state.note,
+        ackUpdatedAt: state.updatedAt,
+        ackUpdatedBy: state.updatedBy ?? undefined,
+        acknowledgedAt: state.acknowledgedAt ?? undefined,
+        resolvedAt: state.resolvedAt ?? undefined
+      };
+    }
+    return {
+      ...alert,
+      ackStatus: "active"
+    };
+  });
+
+  mergedAlerts.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+
+  return NextResponse.json(
+    { alerts: mergedAlerts, errors },
+    { headers: { "Cache-Control": "no-store" } }
+  );
 }

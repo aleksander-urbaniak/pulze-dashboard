@@ -22,6 +22,40 @@ const trendRanges: Array<{ value: TrendRange; label: string }> = [
   { value: "month", label: "Month" },
   { value: "year", label: "Last year" }
 ];
+const teamConfigs = [
+  { id: "infra", name: "Core Infra", sources: ["Prometheus"] },
+  { id: "platform", name: "Platform Ops", sources: ["Zabbix"] },
+  { id: "apps", name: "App Health", sources: ["Kuma"] }
+] as const;
+
+function formatDuration(ms: number) {
+  if (!Number.isFinite(ms) || ms <= 0) {
+    return "0m";
+  }
+  const minutes = Math.floor(ms / 60000);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  if (days > 0) {
+    return `${days}d ${hours % 24}h`;
+  }
+  if (hours > 0) {
+    return `${hours}h ${minutes % 60}m`;
+  }
+  return `${minutes}m`;
+}
+
+function formatDelta(current: number, previous: number) {
+  if (previous === 0) {
+    if (current === 0) {
+      return { trend: "up" as const, text: "0.0%" };
+    }
+    return { trend: "up" as const, text: "+100.0%" };
+  }
+  const diff = ((current - previous) / previous) * 100;
+  const trend = diff >= 0 ? "up" : "down";
+  const text = `${diff >= 0 ? "+" : ""}${Math.abs(diff).toFixed(1)}%`;
+  return { trend, text };
+}
 
 export default function AnalyticsPage() {
   const router = useRouter();
@@ -45,6 +79,7 @@ export default function AnalyticsPage() {
 
   const analytics = useMemo(() => {
     const now = new Date();
+    const nowMs = now.getTime();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const startOfTomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
     const startOfYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
@@ -65,12 +100,51 @@ export default function AnalyticsPage() {
     };
 
     const traffic = new Map<string, number>();
+    const noisyAlerts = new Map<string, number>();
+    const durations: number[] = [];
+
+    function buildDailyCounts(days: number) {
+      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (days - 1));
+      const buckets = new Map<string, number>();
+      for (let i = 0; i < days; i += 1) {
+        const date = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+        buckets.set(date.toDateString(), 0);
+      }
+      alerts.forEach((alert) => {
+        const ts = new Date(alert.timestamp);
+        if (Number.isNaN(ts.getTime()) || ts < start) {
+          return;
+        }
+        const key = new Date(ts.getFullYear(), ts.getMonth(), ts.getDate()).toDateString();
+        if (buckets.has(key)) {
+          buckets.set(key, (buckets.get(key) ?? 0) + 1);
+        }
+      });
+      const entries = Array.from(buckets.entries()).map(([key, value]) => ({ key, value }));
+      const total = entries.reduce((sum, entry) => sum + entry.value, 0);
+      const busiest = entries.reduce(
+        (best, entry) => (entry.value > best.value ? entry : best),
+        { key: start.toDateString(), value: 0 }
+      );
+      return {
+        total,
+        average: total / days,
+        busiest: {
+          date: new Date(busiest.key).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric"
+          }),
+          count: busiest.value
+        }
+      };
+    }
 
     alerts.forEach((alert) => {
       const ts = new Date(alert.timestamp);
       if (Number.isNaN(ts.getTime())) {
         return;
       }
+      durations.push(Math.max(0, nowMs - ts.getTime()));
       if (ts >= startOfToday && ts < startOfTomorrow) {
         counts.currentDay += 1;
       } else if (ts >= startOfYesterday && ts < startOfToday) {
@@ -91,6 +165,7 @@ export default function AnalyticsPage() {
       if (monitoringLabel) {
         traffic.set(monitoringLabel, (traffic.get(monitoringLabel) ?? 0) + 1);
       }
+      noisyAlerts.set(alert.name, (noisyAlerts.get(alert.name) ?? 0) + 1);
     });
 
     const topSources = Array.from(traffic.entries())
@@ -98,7 +173,57 @@ export default function AnalyticsPage() {
       .slice(0, 8)
       .map(([name, count]) => ({ name, count }));
 
-    return { counts, topSources };
+    const topNoisyAlerts = Array.from(noisyAlerts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([name, count]) => ({ name, count }));
+
+    const sortedDurations = [...durations].sort((a, b) => a - b);
+    const meanDuration =
+      durations.length === 0 ? 0 : durations.reduce((sum, value) => sum + value, 0) / durations.length;
+    const medianDuration =
+      sortedDurations.length === 0
+        ? 0
+        : sortedDurations[Math.floor(sortedDurations.length / 2)];
+
+    const frequency7d = buildDailyCounts(7);
+    const frequency30d = buildDailyCounts(30);
+
+    const teamStats = teamConfigs.map((team) => {
+      const teamAlerts = alerts.filter((alert) => team.sources.includes(alert.source));
+      const critical = teamAlerts.filter((alert) => alert.severity === "critical").length;
+      const teamLabels = new Map<string, number>();
+      teamAlerts.forEach((alert) => {
+        const label = (alert.sourceLabel ?? alert.source).trim();
+        if (label) {
+          teamLabels.set(label, (teamLabels.get(label) ?? 0) + 1);
+        }
+      });
+      const topLabel = Array.from(teamLabels.entries()).sort((a, b) => b[1] - a[1])[0];
+      const lastSeen = teamAlerts.reduce((latest, alert) => {
+        const ts = new Date(alert.timestamp).getTime();
+        return Number.isNaN(ts) ? latest : Math.max(latest, ts);
+      }, 0);
+      return {
+        id: team.id,
+        name: team.name,
+        total: teamAlerts.length,
+        critical,
+        topLabel: topLabel ? topLabel[0] : "None",
+        lastSeen
+      };
+    });
+
+    return {
+      counts,
+      topSources,
+      topNoisyAlerts,
+      meanDuration,
+      medianDuration,
+      frequency7d,
+      frequency30d,
+      teamStats
+    };
   }, [alerts]);
 
   const monthOptions = useMemo(() => buildMonthOptions(12), []);
@@ -106,6 +231,105 @@ export default function AnalyticsPage() {
     () => buildTrendData(alerts, trendRange, trendMonth),
     [alerts, trendRange, trendMonth]
   );
+  const activeDelta = formatDelta(alerts.length, analytics.counts.lastDay);
+  const dayDelta = formatDelta(analytics.counts.currentDay, analytics.counts.lastDay);
+  const monthDelta = formatDelta(analytics.counts.currentMonth, analytics.counts.lastMonth);
+  const yearDelta = formatDelta(analytics.counts.currentYear, analytics.counts.lastYear);
+  const statCards = [
+    {
+      id: "active",
+      title: "Active Alerts",
+      value: alerts.length.toLocaleString(),
+      change: activeDelta.text,
+      trend: activeDelta.trend,
+      color: "text-rose-600",
+      bg: "bg-rose-100",
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <path
+            d="M12 7v6"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+          />
+          <path
+            d="M12 17h.01"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+          />
+          <path
+            d="M4.5 19h15L12 5 4.5 19Z"
+            stroke="currentColor"
+            strokeWidth="1.4"
+            strokeLinejoin="round"
+          />
+        </svg>
+      )
+    },
+    {
+      id: "today",
+      title: "Alerts Today",
+      value: analytics.counts.currentDay.toLocaleString(),
+      change: dayDelta.text,
+      trend: dayDelta.trend,
+      color: "text-amber-600",
+      bg: "bg-amber-100",
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.6" />
+          <path
+            d="M12 8v4l2.5 2"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+          />
+        </svg>
+      )
+    },
+    {
+      id: "month",
+      title: "Alerts This Month",
+      value: analytics.counts.currentMonth.toLocaleString(),
+      change: monthDelta.text,
+      trend: monthDelta.trend,
+      color: "text-sky-600",
+      bg: "bg-sky-100",
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <rect x="4" y="6" width="16" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" />
+          <path d="M4 10h16" stroke="currentColor" strokeWidth="1.6" />
+          <path d="M8 4v4M16 4v4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+        </svg>
+      )
+    },
+    {
+      id: "year",
+      title: "Alerts This Year",
+      value: analytics.counts.currentYear.toLocaleString(),
+      change: yearDelta.text,
+      trend: yearDelta.trend,
+      color: "text-emerald-600",
+      bg: "bg-emerald-100",
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <path
+            d="M4 16l5-5 4 4 6-7"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M14 8h4v4"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+          />
+        </svg>
+      )
+    }
+  ];
 
   async function loadSession() {
     const response = await fetch("/api/auth/me");
@@ -171,6 +395,55 @@ export default function AnalyticsPage() {
               {errors.map((error) => `${error.source}: ${error.message}`).join(" | ")}
             </div>
           ) : null}
+
+          <div className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            {statCards.map((card) => (
+              <div
+                key={card.id}
+                className="rounded-2xl border border-border bg-surface/90 p-5 shadow-card backdrop-blur"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div
+                    className={`flex h-12 w-12 items-center justify-center rounded-2xl ${card.bg} ${card.color}`}
+                  >
+                    {card.icon}
+                  </div>
+                  <div
+                    className={
+                      card.trend === "up"
+                        ? "flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-600"
+                        : "flex items-center gap-1 rounded-full bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-600"
+                    }
+                  >
+                    {card.trend === "up" ? (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                        <path
+                          d="M7 14l5-5 5 5"
+                          stroke="currentColor"
+                          strokeWidth="1.6"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    ) : (
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                        <path
+                          d="M7 10l5 5 5-5"
+                          stroke="currentColor"
+                          strokeWidth="1.6"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    )}
+                    {card.change}
+                  </div>
+                </div>
+                <p className="mt-4 text-sm text-muted">{card.title}</p>
+                <p className="mt-1 text-2xl font-semibold">{card.value}</p>
+              </div>
+            ))}
+          </div>
 
           <div className="mt-6 grid gap-6 lg:grid-cols-[2fr_1fr]">
             <div className="rounded-3xl border border-border bg-surface/90 p-6 shadow-card backdrop-blur">
@@ -252,6 +525,120 @@ export default function AnalyticsPage() {
                   ))
                 )}
               </div>
+            </div>
+          </div>
+
+          <div className="mt-8 grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+            <div className="rounded-3xl border border-border bg-surface/90 p-6 shadow-card backdrop-blur">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.3em] text-muted">
+                    Historical analytics
+                  </p>
+                  <h3 className="mt-2 text-2xl font-semibold">MTTR, MTTA, frequency</h3>
+                </div>
+                <span className="text-xs uppercase tracking-[0.2em] text-muted">
+                  Based on active alerts
+                </span>
+              </div>
+              <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                <div className="rounded-2xl border border-border bg-base/60 p-4">
+                  <p className="text-xs uppercase tracking-[0.2em] text-muted">MTTA (proxy)</p>
+                  <p className="mt-3 text-2xl font-semibold">
+                    {formatDuration(analytics.meanDuration)}
+                  </p>
+                  <p className="mt-2 text-xs text-muted">Average alert age.</p>
+                </div>
+                <div className="rounded-2xl border border-border bg-base/60 p-4">
+                  <p className="text-xs uppercase tracking-[0.2em] text-muted">MTTR (proxy)</p>
+                  <p className="mt-3 text-2xl font-semibold">
+                    {formatDuration(analytics.medianDuration)}
+                  </p>
+                  <p className="mt-2 text-xs text-muted">Median alert age.</p>
+                </div>
+                <div className="rounded-2xl border border-border bg-base/60 p-4">
+                  <p className="text-xs uppercase tracking-[0.2em] text-muted">Incident frequency</p>
+                  <p className="mt-3 text-2xl font-semibold">
+                    {analytics.frequency7d.total.toLocaleString()}
+                  </p>
+                  <p className="mt-2 text-xs text-muted">
+                    Last 7d avg {analytics.frequency7d.average.toFixed(1)}/day.
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-border bg-base/60 p-4">
+                  <p className="text-xs uppercase tracking-[0.2em] text-muted">Busiest day</p>
+                  <p className="mt-3 text-2xl font-semibold">
+                    {analytics.frequency30d.busiest.count}
+                  </p>
+                  <p className="mt-2 text-xs text-muted">
+                    {analytics.frequency30d.busiest.date} in the last 30d.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-border bg-surface/90 p-6 shadow-card backdrop-blur">
+              <p className="text-xs uppercase tracking-[0.3em] text-muted">Top noisy sources</p>
+              <h3 className="mt-2 text-2xl font-semibold">Noisiest alert names</h3>
+              <div className="mt-6 space-y-3">
+                {analytics.topNoisyAlerts.length === 0 ? (
+                  <p className="text-sm text-muted">No alert noise recorded yet.</p>
+                ) : (
+                  analytics.topNoisyAlerts.map((alert, index) => (
+                    <div
+                      key={`${alert.name}-${index}`}
+                      className="flex items-center justify-between rounded-2xl border border-border bg-base/50 px-4 py-3"
+                    >
+                      <span className="text-sm font-semibold">{alert.name}</span>
+                      <span className="text-xs text-muted">{alert.count}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-8 rounded-3xl border border-border bg-surface/90 p-6 shadow-card backdrop-blur">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.3em] text-muted">Team dashboards</p>
+                <h3 className="mt-2 text-2xl font-semibold">Team-level snapshots</h3>
+              </div>
+              <span className="text-xs uppercase tracking-[0.2em] text-muted">
+                Source-based grouping
+              </span>
+            </div>
+            <div className="mt-6 grid gap-4 md:grid-cols-3">
+              {analytics.teamStats.map((team) => (
+                <div
+                  key={team.id}
+                  className="rounded-2xl border border-border bg-base/60 p-5"
+                >
+                  <p className="text-xs uppercase tracking-[0.2em] text-muted">{team.name}</p>
+                  <div className="mt-4 flex items-baseline justify-between">
+                    <span className="text-3xl font-semibold">{team.total}</span>
+                    <span className="text-xs uppercase tracking-[0.2em] text-muted">Alerts</span>
+                  </div>
+                  <div className="mt-4 space-y-2 text-sm text-muted">
+                    <div className="flex items-center justify-between">
+                      <span>Critical</span>
+                      <span className="font-semibold">{team.critical}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Top label</span>
+                      <span className="font-semibold">{team.topLabel}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Last seen</span>
+                      <span className="font-semibold">
+                        {team.lastSeen
+                          ? new Date(team.lastSeen).toLocaleTimeString()
+                          : "N/A"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 

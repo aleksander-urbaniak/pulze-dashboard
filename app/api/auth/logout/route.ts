@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server";
 
-import { getSessionToken } from "../../../../lib/auth";
-import { deleteSession } from "../../../../lib/db";
+import { getSessionToken, getSessionUser } from "../../../../lib/auth";
+import { deleteSession, logAudit } from "../../../../lib/db";
 
 export const runtime = "nodejs";
 
 export async function POST() {
   const token = getSessionToken();
+  const user = getSessionUser();
+  if (user) {
+    logAudit("auth.logout", user.id, { username: user.username });
+  }
   if (token) {
     deleteSession(token);
   }
