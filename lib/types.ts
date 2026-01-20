@@ -72,6 +72,17 @@ export interface Alert {
   resolvedAt?: string;
 }
 
+export interface DataSourceHealth {
+  sourceId: string;
+  sourceType: AlertSource;
+  sourceLabel?: string;
+  lastSuccessAt?: string | null;
+  lastErrorAt?: string | null;
+  lastErrorMessage?: string | null;
+  failCount?: number;
+  nextRetryAt?: string | null;
+}
+
 export interface PrometheusSource {
   id: string;
   name: string;

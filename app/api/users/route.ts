@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import bcrypt from "bcryptjs";
 
 import { getSessionUser } from "../../../lib/auth";
 import {
@@ -88,6 +89,7 @@ export async function PATCH(request: Request) {
     lastName?: string;
     email?: string;
     avatarUrl?: string;
+    password?: string;
     role?: "viewer" | "admin";
   };
 
@@ -102,19 +104,23 @@ export async function PATCH(request: Request) {
     }
   }
 
+  const password = payload.password?.trim();
+  const passwordHash = password ? bcrypt.hashSync(password, 10) : undefined;
   const updated = updateUser(payload.id, {
     username: payload.username?.trim(),
     firstName: payload.firstName?.trim(),
     lastName: payload.lastName?.trim(),
     email: payload.email?.trim(),
     avatarUrl: payload.avatarUrl?.trim(),
+    passwordHash,
     role: payload.role
   });
 
   logAudit("users.update", user.id, {
     userId: updated.id,
     username: updated.username,
-    role: updated.role
+    role: updated.role,
+    passwordChanged: Boolean(passwordHash)
   });
 
   return NextResponse.json({ user: toPublicUser(updated) });

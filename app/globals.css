@@ -38,8 +38,16 @@ body {
 body {
   margin: 0;
   font-family: var(--font-body), "Segoe UI", sans-serif;
+  -webkit-tap-highlight-color: transparent;
   background-color: rgb(var(--base));
   background-image:
+    radial-gradient(
+      circle at 50% 40%,
+      rgb(var(--base) / 0) 0%,
+      rgb(var(--base) / 0.25) 45%,
+      rgb(var(--base) / 0.7) 78%,
+      rgb(var(--base)) 100%
+    ),
     radial-gradient(circle at 20% 20%, rgb(var(--accent) / var(--bg-glow)), transparent 55%),
     radial-gradient(circle at 80% 0%, rgb(var(--accent) / calc(var(--bg-glow) * 0.7)), transparent 45%),
     linear-gradient(
@@ -47,6 +55,9 @@ body {
       rgb(var(--base) / var(--bg-gradient)),
       rgb(var(--surface) / calc(var(--bg-gradient) * 0.96))
     );
+  background-repeat: no-repeat;
+  background-size: 240% 240%;
+  background-position: 50% 40%;
   color: rgb(var(--text));
   position: relative;
   isolation: isolate;
@@ -55,6 +66,13 @@ body {
 .dark body {
   background-color: rgb(var(--base));
   background-image:
+    radial-gradient(
+      circle at 50% 40%,
+      rgb(var(--base) / 0) 0%,
+      rgb(var(--base) / 0.25) 45%,
+      rgb(var(--base) / 0.7) 78%,
+      rgb(var(--base)) 100%
+    ),
     radial-gradient(circle at 10% 10%, rgb(var(--accent) / calc(var(--bg-glow) * 1.2)), transparent 55%),
     radial-gradient(circle at 85% 5%, rgb(var(--accent) / calc(var(--bg-glow) * 0.9)), transparent 50%),
     linear-gradient(
@@ -62,6 +80,9 @@ body {
       rgb(var(--base) / var(--bg-gradient)),
       rgb(var(--surface) / calc(var(--bg-gradient) * 0.96))
     );
+  background-repeat: no-repeat;
+  background-size: 240% 240%;
+  background-position: 50% 40%;
 }
 
 body::before {
@@ -86,12 +107,28 @@ body::before {
       transparent 1px,
       transparent 2px
     );
-  z-index: 0;
+  z-index: 1;
 }
 
 body > * {
   position: relative;
-  z-index: 1;
+  z-index: 2;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: -20%;
+  pointer-events: none;
+  background-image: radial-gradient(
+    circle at 50% 35%,
+    rgb(var(--base) / 0) 0%,
+    rgb(var(--base) / 0.2) 50%,
+    rgb(var(--base) / 0.6) 80%,
+    rgb(var(--base)) 100%
+  );
+  opacity: 0.9;
+  z-index: 0;
 }
 
 .theme-icon {
@@ -127,6 +164,17 @@ body > * {
   position: relative;
   z-index: 1;
   transition: opacity 0.2s ease;
+}
+
+:root.theme-transition,
+:root.theme-transition * {
+  transition:
+    background-color 0.6s ease,
+    color 0.6s ease,
+    border-color 0.6s ease,
+    box-shadow 0.6s ease,
+    fill 0.6s ease,
+    stroke 0.6s ease;
 }
 
 :root[data-brand-logo="true"] .brand-logo__image {
@@ -165,7 +213,7 @@ h4 {
   button:not(:disabled):hover,
   [role="button"]:not([aria-disabled="true"]):hover {
     transform: translateY(-1px);
-    filter: brightness(1.12);
+    filter: brightness(1.18);
   }
 
   button:not(:disabled):active,
@@ -189,7 +237,7 @@ h4 {
   }
 
   .nav-link:hover {
-    filter: brightness(1.12);
+    filter: brightness(1.18);
   }
 
   .nav-link:active {

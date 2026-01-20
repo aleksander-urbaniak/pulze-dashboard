@@ -7,15 +7,18 @@ import Sidebar from "../../components/Sidebar";
 import AlertChart from "../../components/AlertChart";
 import FilterSelect from "../../components/FilterSelect";
 import {
+  buildAnalyticsSummary,
   buildMonthOptions,
   buildTrendData,
   getMonthValue,
+  type AnalyticsSummary,
   type TrendRange
 } from "../../lib/analytics";
-import type { Alert, User } from "../../lib/types";
+import type { Alert, Settings, User } from "../../lib/types";
 
 type UserResponse = { user: User };
 type AlertResponse = { alerts: Alert[]; errors: Array<{ source: string; message: string }> };
+type AlertLogResponse = { alerts: Alert[]; total: number; page: number; pageSize: number };
 const trendRanges: Array<{ value: TrendRange; label: string }> = [
   { value: "1d", label: "1D" },
   { value: "7d", label: "7D" },
@@ -23,11 +26,10 @@ const trendRanges: Array<{ value: TrendRange; label: string }> = [
   { value: "month", label: "Month" },
   { value: "year", label: "Last year" }
 ];
-const teamConfigs = [
-  { id: "infra", name: "Core Infra", sources: ["Prometheus"] },
-  { id: "platform", name: "Platform Ops", sources: ["Zabbix"] },
-  { id: "apps", name: "App Health", sources: ["Kuma"] }
-] as const;
+const alertLogPageOptions = [10, 25, 50, 100].map((value) => ({
+  value: String(value),
+  label: `${value} / page`
+}));
 
 function formatDuration(ms: number) {
   if (!Number.isFinite(ms) || ms <= 0) {
@@ -63,10 +65,17 @@ export default function AnalyticsPage() {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [alertLogEntries, setAlertLogEntries] = useState<Alert[]>([]);
+  const [analyticsSummary, setAnalyticsSummary] = useState<AnalyticsSummary | null>(null);
+  const [settings, setSettings] = useState<Settings | null>(null);
   const [errors, setErrors] = useState<Array<{ source: string; message: string }>>([]);
   const [isLoadingAlerts, setIsLoadingAlerts] = useState(false);
   const [trendRange, setTrendRange] = useState<TrendRange>("14d");
   const [trendMonth, setTrendMonth] = useState(() => getMonthValue(new Date()));
+  const [alertLogPageSize, setAlertLogPageSize] = useState(25);
+  const [alertLogPage, setAlertLogPage] = useState(1);
+  const [alertLogTotal, setAlertLogTotal] = useState(0);
+  const [alertLogQuery, setAlertLogQuery] = useState("");
 
   useEffect(() => {
     void loadSession();
@@ -75,157 +84,36 @@ export default function AnalyticsPage() {
   useEffect(() => {
     if (user) {
       void loadAlerts();
+      void loadAnalyticsSummary();
+      void loadSettings();
     }
   }, [user]);
 
-  const analytics = useMemo(() => {
-    const now = new Date();
-    const nowMs = now.getTime();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const startOfTomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-    const startOfYesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const startOfYear = new Date(now.getFullYear(), 0, 1);
-    const startOfNextYear = new Date(now.getFullYear() + 1, 0, 1);
-    const startOfLastYear = new Date(now.getFullYear() - 1, 0, 1);
+  const alertLogPageCount = Math.max(1, Math.ceil(alertLogTotal / alertLogPageSize));
+  const alertLogPageSafe = Math.min(alertLogPage, alertLogPageCount);
+  const alertLogSlice = alertLogEntries;
 
-    const counts = {
-      currentDay: 0,
-      lastDay: 0,
-      currentMonth: 0,
-      lastMonth: 0,
-      currentYear: 0,
-      lastYear: 0
-    };
+  useEffect(() => {
+    setAlertLogPage(1);
+  }, [alertLogPageSize, alertLogQuery]);
 
-    const traffic = new Map<string, number>();
-    const noisyAlerts = new Map<string, number>();
-    const durations: number[] = [];
-
-    function buildDailyCounts(days: number) {
-      const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (days - 1));
-      const buckets = new Map<string, number>();
-      for (let i = 0; i < days; i += 1) {
-        const date = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
-        buckets.set(date.toDateString(), 0);
-      }
-      alerts.forEach((alert) => {
-        const ts = new Date(alert.timestamp);
-        if (Number.isNaN(ts.getTime()) || ts < start) {
-          return;
-        }
-        const key = new Date(ts.getFullYear(), ts.getMonth(), ts.getDate()).toDateString();
-        if (buckets.has(key)) {
-          buckets.set(key, (buckets.get(key) ?? 0) + 1);
-        }
-      });
-      const entries = Array.from(buckets.entries()).map(([key, value]) => ({ key, value }));
-      const total = entries.reduce((sum, entry) => sum + entry.value, 0);
-      const busiest = entries.reduce(
-        (best, entry) => (entry.value > best.value ? entry : best),
-        { key: start.toDateString(), value: 0 }
-      );
-      return {
-        total,
-        average: total / days,
-        busiest: {
-          date: new Date(busiest.key).toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric"
-          }),
-          count: busiest.value
-        }
-      };
+  useEffect(() => {
+    if (alertLogPage > alertLogPageCount) {
+      setAlertLogPage(alertLogPageCount);
     }
+  }, [alertLogPage, alertLogPageCount]);
 
-    alerts.forEach((alert) => {
-      const ts = new Date(alert.timestamp);
-      if (Number.isNaN(ts.getTime())) {
-        return;
-      }
-      durations.push(Math.max(0, nowMs - ts.getTime()));
-      if (ts >= startOfToday && ts < startOfTomorrow) {
-        counts.currentDay += 1;
-      } else if (ts >= startOfYesterday && ts < startOfToday) {
-        counts.lastDay += 1;
-      }
-      if (ts >= startOfMonth && ts < startOfNextMonth) {
-        counts.currentMonth += 1;
-      } else if (ts >= startOfLastMonth && ts < startOfMonth) {
-        counts.lastMonth += 1;
-      }
-      if (ts >= startOfYear && ts < startOfNextYear) {
-        counts.currentYear += 1;
-      } else if (ts >= startOfLastYear && ts < startOfYear) {
-        counts.lastYear += 1;
-      }
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+    void loadAlertLog();
+  }, [user, alertLogPage, alertLogPageSize, alertLogQuery]);
 
-      const monitoringLabel = (alert.sourceLabel ?? alert.source).trim();
-      if (monitoringLabel) {
-        traffic.set(monitoringLabel, (traffic.get(monitoringLabel) ?? 0) + 1);
-      }
-      noisyAlerts.set(alert.name, (noisyAlerts.get(alert.name) ?? 0) + 1);
-    });
-
-    const topSources = Array.from(traffic.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 8)
-      .map(([name, count]) => ({ name, count }));
-
-    const topNoisyAlerts = Array.from(noisyAlerts.entries())
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 6)
-      .map(([name, count]) => ({ name, count }));
-
-    const sortedDurations = [...durations].sort((a, b) => a - b);
-    const meanDuration =
-      durations.length === 0 ? 0 : durations.reduce((sum, value) => sum + value, 0) / durations.length;
-    const medianDuration =
-      sortedDurations.length === 0
-        ? 0
-        : sortedDurations[Math.floor(sortedDurations.length / 2)];
-
-    const frequency7d = buildDailyCounts(7);
-    const frequency30d = buildDailyCounts(30);
-
-    const teamStats = teamConfigs.map((team) => {
-      const teamAlerts = alerts.filter((alert) => team.sources.includes(alert.source));
-      const critical = teamAlerts.filter((alert) => alert.severity === "critical").length;
-      const teamLabels = new Map<string, number>();
-      teamAlerts.forEach((alert) => {
-        const label = (alert.sourceLabel ?? alert.source).trim();
-        if (label) {
-          teamLabels.set(label, (teamLabels.get(label) ?? 0) + 1);
-        }
-      });
-      const topLabel = Array.from(teamLabels.entries()).sort((a, b) => b[1] - a[1])[0];
-      const lastSeen = teamAlerts.reduce((latest, alert) => {
-        const ts = new Date(alert.timestamp).getTime();
-        return Number.isNaN(ts) ? latest : Math.max(latest, ts);
-      }, 0);
-      return {
-        id: team.id,
-        name: team.name,
-        total: teamAlerts.length,
-        critical,
-        topLabel: topLabel ? topLabel[0] : "None",
-        lastSeen
-      };
-    });
-
-    return {
-      counts,
-      topSources,
-      topNoisyAlerts,
-      meanDuration,
-      medianDuration,
-      frequency7d,
-      frequency30d,
-      teamStats
-    };
-  }, [alerts]);
+  const analytics = useMemo(
+    () => analyticsSummary ?? buildAnalyticsSummary(alerts),
+    [alerts, analyticsSummary]
+  );
 
   const monthOptions = useMemo(() => buildMonthOptions(12), []);
   const trendData = useMemo(
@@ -357,6 +245,70 @@ export default function AnalyticsPage() {
     setIsLoadingAlerts(false);
   }
 
+  async function loadAlertLog() {
+    const query = new URLSearchParams({
+      page: String(alertLogPage),
+      pageSize: String(alertLogPageSize),
+      query: alertLogQuery
+    });
+    const response = await fetch(`/api/alerts/log?${query.toString()}`);
+    if (!response.ok) {
+      setAlertLogEntries([]);
+      return;
+    }
+    const data = (await response.json()) as AlertLogResponse & {
+      total: number;
+    };
+    setAlertLogEntries(data.alerts ?? []);
+    setAlertLogTotal(data.total ?? 0);
+  }
+
+  async function loadAnalyticsSummary() {
+    const response = await fetch("/api/analytics/summary");
+    if (!response.ok) {
+      return;
+    }
+    const data = (await response.json()) as { summary: AnalyticsSummary };
+    if (data.summary) {
+      setAnalyticsSummary(data.summary);
+    }
+  }
+
+  async function loadSettings() {
+    const response = await fetch("/api/settings");
+    if (!response.ok) {
+      return;
+    }
+    const data = (await response.json()) as { settings: Settings };
+    setSettings(data.settings);
+  }
+
+  function getAlertSourceUrl(alert: Alert) {
+    if (!settings) {
+      return null;
+    }
+    const label = alert.sourceLabel?.trim() ?? "";
+    if (alert.source === "Prometheus") {
+      const match = settings.prometheusSources.find((source) =>
+        label ? source.name.trim() === label : Boolean(source.url)
+      );
+      return match?.url ?? null;
+    }
+    if (alert.source === "Zabbix") {
+      const match = settings.zabbixSources.find((source) =>
+        label ? source.name.trim() === label : Boolean(source.url)
+      );
+      return match?.url ?? null;
+    }
+    if (alert.source === "Kuma") {
+      const match = settings.kumaSources.find((source) =>
+        label ? source.name.trim() === label : Boolean(source.baseUrl)
+      );
+      return match?.baseUrl ?? null;
+    }
+    return null;
+  }
+
   async function handleLogout() {
     await fetch("/api/auth/logout", { method: "POST" });
     router.push("/");
@@ -373,7 +325,7 @@ export default function AnalyticsPage() {
   }
 
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-screen flex flex-col md:flex-row">
       <Sidebar user={user} onLogout={handleLogout} />
       <div className="flex-1">
         <main className="mx-auto max-w-6xl px-6 py-10">
@@ -384,7 +336,11 @@ export default function AnalyticsPage() {
             </div>
             <button
               type="button"
-              onClick={() => void loadAlerts()}
+              onClick={() => {
+                void loadAlerts();
+                void loadAlertLog();
+                void loadAnalyticsSummary();
+              }}
               className="rounded-full border border-border px-4 py-2 text-xs uppercase tracking-[0.2em]"
             >
               {isLoadingAlerts ? "Refreshing" : "Refresh"}
@@ -640,15 +596,58 @@ export default function AnalyticsPage() {
             </div>
           </div>
 
-          <div className="mt-8 overflow-hidden rounded-3xl border border-border bg-surface/90 shadow-card">
+          <div className="mt-8 overflow-x-auto rounded-3xl border border-border bg-surface/90 shadow-card">
             <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border px-6 py-4">
               <div>
                 <p className="text-xs uppercase tracking-[0.3em] text-muted">Detailed Report</p>
                 <h3 className="mt-1 text-xl font-semibold">Alert log</h3>
               </div>
-              <span className="text-xs uppercase tracking-[0.2em] text-muted">
-                Showing {alerts.length} alerts
-              </span>
+              <div className="w-full max-w-full sm:max-w-xs lg:max-w-sm">
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                      <circle
+                        cx="11"
+                        cy="11"
+                        r="7"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                      />
+                      <path
+                        d="M20 20l-3.5-3.5"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                  </span>
+                  <input
+                    value={alertLogQuery}
+                    onChange={(event) => setAlertLogQuery(event.target.value)}
+                    placeholder="Search time, alert, severity, instance"
+                    aria-label="Search alert log"
+                    className="w-full rounded-full border border-border bg-base/60 py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30"
+                  />
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-3 text-xs uppercase tracking-[0.2em] text-muted">
+                <span>Last 30 days - {alertLogTotal} alerts</span>
+                <FilterSelect
+                  value={String(alertLogPageSize)}
+                  onChange={(value) => {
+                    const nextValue = Number(value);
+                    if (!Number.isFinite(nextValue)) {
+                      return;
+                    }
+                    setAlertLogPageSize(nextValue);
+                    setAlertLogPage(1);
+                  }}
+                  options={alertLogPageOptions}
+                  ariaLabel="Alert log page size"
+                  className="rounded-full border border-border bg-base/60 px-3 py-1 text-xs uppercase tracking-[0.2em]"
+                  optionClassName="text-xs uppercase tracking-[0.2em]"
+                />
+              </div>
             </div>
             <table className="w-full text-sm">
               <thead className="bg-base/60 text-xs uppercase tracking-[0.2em] text-muted">
@@ -661,41 +660,83 @@ export default function AnalyticsPage() {
                 </tr>
               </thead>
               <tbody>
-                {alerts.length === 0 ? (
+                {alertLogSlice.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="px-4 py-6 text-center text-sm text-muted">
-                      No alerts available yet.
+                      {alertLogQuery ? "No alerts match your search." : "No alerts available yet."}
                     </td>
                   </tr>
                 ) : (
-                  alerts.map((alert) => (
-                    <tr key={alert.id} className="border-t border-border bg-surface/80">
-                      <td className="px-4 py-3 font-semibold">
-                        {alert.sourceLabel || alert.source}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={
-                            alert.severity === "critical"
-                              ? "rounded-full bg-red-500/15 px-3 py-1 text-xs uppercase tracking-[0.2em] text-red-500"
-                              : alert.severity === "warning"
-                                ? "rounded-full bg-yellow-400/20 px-3 py-1 text-xs uppercase tracking-[0.2em] text-yellow-600"
-                                : "rounded-full bg-emerald-400/15 px-3 py-1 text-xs uppercase tracking-[0.2em] text-emerald-500"
-                          }
-                        >
-                          {alert.severity}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-muted">{alert.instance || "-"}</td>
-                      <td className="px-4 py-3">{alert.name}</td>
-                      <td className="px-4 py-3 text-muted">
-                        {new Date(alert.timestamp).toLocaleString()}
-                      </td>
-                    </tr>
-                  ))
+                  alertLogSlice.map((alert) => {
+                    const alertSourceUrl = getAlertSourceUrl(alert);
+                    return (
+                      <tr key={alert.id} className="border-t border-border bg-surface/80">
+                        <td className="px-4 py-3 font-semibold">
+                          {alert.sourceLabel || alert.source}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={
+                              alert.severity === "critical"
+                                ? "rounded-full bg-red-500/15 px-3 py-1 text-xs uppercase tracking-[0.2em] text-red-500"
+                                : alert.severity === "warning"
+                                  ? "rounded-full bg-yellow-400/20 px-3 py-1 text-xs uppercase tracking-[0.2em] text-yellow-600"
+                                  : "rounded-full bg-emerald-400/15 px-3 py-1 text-xs uppercase tracking-[0.2em] text-emerald-500"
+                            }
+                          >
+                            {alert.severity}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-muted">{alert.instance || "-"}</td>
+                        <td className="px-4 py-3">
+                          {alertSourceUrl ? (
+                            <a href={alertSourceUrl} className="text-accent hover:underline">
+                              {alert.name}
+                            </a>
+                          ) : (
+                            alert.name
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-muted">
+                          {new Date(alert.timestamp).toLocaleString()}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-6 py-4 text-xs uppercase tracking-[0.2em] text-muted">
+              <span>
+                {alertLogTotal === 0
+                  ? "Showing 0"
+                  : `Showing ${(alertLogPageSafe - 1) * alertLogPageSize + 1}-${Math.min(
+                      alertLogPageSafe * alertLogPageSize,
+                      alertLogTotal
+                    )} of ${alertLogTotal}`}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAlertLogPage((prev) => Math.max(1, prev - 1))}
+                  disabled={alertLogPageSafe <= 1}
+                  className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em] disabled:opacity-50"
+                >
+                  Prev
+                </button>
+                <span>
+                  Page {alertLogPageSafe} / {alertLogPageCount}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setAlertLogPage((prev) => Math.min(alertLogPageCount, prev + 1))}
+                  disabled={alertLogPageSafe >= alertLogPageCount}
+                  className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em] disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
           </div>
         </main>
       </div>

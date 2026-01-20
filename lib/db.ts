@@ -5,6 +5,7 @@ import fs from "fs";
 import path from "path";
 
 import type {
+  Alert,
   AppearanceSettings,
   AuditLogEntry,
   KumaSource,
@@ -40,6 +41,21 @@ export interface AlertStateRow {
   createdAt: string;
 }
 
+export interface AlertLogRow extends Alert {
+  firstSeenAt: string;
+  lastSeenAt: string;
+}
+
+export interface DataSourceHealthRow {
+  sourceId: string;
+  sourceType: "Prometheus" | "Zabbix" | "Kuma";
+  lastSuccessAt: string | null;
+  lastErrorAt: string | null;
+  lastErrorMessage: string | null;
+  failCount: number;
+  nextRetryAt: string | null;
+}
+
 export interface SavedViewRow extends SavedView {}
 
 export interface AuditLogRow extends AuditLogEntry {}
@@ -63,6 +79,7 @@ const legacyDefaults = {
   kumaSlug: "",
   kumaKey: ""
 };
+const alertLogRetentionMs = 30 * 24 * 60 * 60 * 1000;
 
 function ensureDirectory(filePath: string) {
   const dir = path.dirname(filePath);
@@ -215,6 +232,30 @@ function migrate() {
       created_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS alert_log (
+      alert_id TEXT PRIMARY KEY,
+      source TEXT NOT NULL,
+      source_label TEXT NOT NULL DEFAULT '',
+      name TEXT NOT NULL,
+      severity TEXT NOT NULL,
+      message TEXT NOT NULL,
+      timestamp TEXT NOT NULL,
+      instance TEXT NOT NULL DEFAULT '',
+      first_seen_at TEXT NOT NULL,
+      last_seen_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS data_source_health (
+      source_id TEXT NOT NULL,
+      source_type TEXT NOT NULL,
+      last_success_at TEXT,
+      last_error_at TEXT,
+      last_error_message TEXT,
+      fail_count INTEGER NOT NULL DEFAULT 0,
+      next_retry_at TEXT,
+      PRIMARY KEY (source_id, source_type)
+    );
+
     CREATE TABLE IF NOT EXISTS saved_views (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
@@ -313,6 +354,33 @@ function toSettings(row: any): SettingsRow {
     appearance,
     createdAt: row.created_at,
     updatedAt: row.updated_at
+  };
+}
+
+function toAlertLogRow(row: any): AlertLogRow {
+  return {
+    id: row.alert_id,
+    source: row.source,
+    sourceLabel: row.source_label || undefined,
+    name: row.name,
+    severity: row.severity,
+    message: row.message,
+    timestamp: row.timestamp,
+    instance: row.instance || undefined,
+    firstSeenAt: row.first_seen_at,
+    lastSeenAt: row.last_seen_at
+  };
+}
+
+function toDataSourceHealthRow(row: any): DataSourceHealthRow {
+  return {
+    sourceId: row.source_id,
+    sourceType: row.source_type,
+    lastSuccessAt: row.last_success_at ?? null,
+    lastErrorAt: row.last_error_at ?? null,
+    lastErrorMessage: row.last_error_message ?? null,
+    failCount: Number(row.fail_count ?? 0),
+    nextRetryAt: row.next_retry_at ?? null
   };
 }
 
@@ -586,12 +654,14 @@ export function getAlertStatesByIds(alertIds: string[]): Map<string, AlertStateR
 export function upsertAlertState(params: {
   alertId: string;
   status: "active" | "acknowledged" | "resolved";
-  note: string;
+  note?: string | null;
   userId: string | null;
 }): AlertStateRow {
   const now = new Date().toISOString();
   const acknowledgedAt = params.status === "acknowledged" ? now : null;
   const resolvedAt = params.status === "resolved" ? now : null;
+  const noteInsert = params.note ?? "";
+  const noteUpdate = params.note ?? null;
   db.prepare(
     `INSERT INTO alert_states (
         alert_id,
@@ -605,7 +675,7 @@ export function upsertAlertState(params: {
       ) VALUES (
         @alertId,
         @status,
-        @note,
+        @noteInsert,
         @updatedBy,
         @updatedAt,
         @acknowledgedAt,
@@ -614,7 +684,10 @@ export function upsertAlertState(params: {
       )
       ON CONFLICT(alert_id) DO UPDATE SET
         status = excluded.status,
-        note = excluded.note,
+        note = CASE
+          WHEN @noteUpdate IS NULL THEN alert_states.note
+          ELSE @noteUpdate
+        END,
         updated_by = excluded.updated_by,
         updated_at = excluded.updated_at,
         acknowledged_at = excluded.acknowledged_at,
@@ -622,7 +695,8 @@ export function upsertAlertState(params: {
   ).run({
     alertId: params.alertId,
     status: params.status,
-    note: params.note,
+    noteInsert,
+    noteUpdate,
     updatedBy: params.userId,
     updatedAt: now,
     acknowledgedAt,
@@ -664,6 +738,313 @@ export function resolveMissingAlertStates(activeAlertIds: string[]) {
           updated_at = ?
       WHERE status != 'resolved' AND alert_id NOT IN (${placeholders})`
   ).run(now, now, ...activeAlertIds);
+}
+
+export function upsertAlertStatesBulk(params: {
+  alertIds: string[];
+  status: "active" | "acknowledged" | "resolved";
+  note?: string | null;
+  userId: string | null;
+}): AlertStateRow[] {
+  if (params.alertIds.length === 0) {
+    return [];
+  }
+  const now = new Date().toISOString();
+  const acknowledgedAt = params.status === "acknowledged" ? now : null;
+  const resolvedAt = params.status === "resolved" ? now : null;
+  const noteInsert = params.note ?? "";
+  const noteUpdate = params.note ?? null;
+  const statement = db.prepare(
+    `INSERT INTO alert_states (
+        alert_id,
+        status,
+        note,
+        updated_by,
+        updated_at,
+        acknowledged_at,
+        resolved_at,
+        created_at
+      ) VALUES (
+        @alertId,
+        @status,
+        @noteInsert,
+        @updatedBy,
+        @updatedAt,
+        @acknowledgedAt,
+        @resolvedAt,
+        @createdAt
+      )
+      ON CONFLICT(alert_id) DO UPDATE SET
+        status = excluded.status,
+        note = CASE
+          WHEN @noteUpdate IS NULL THEN alert_states.note
+          ELSE @noteUpdate
+        END,
+        updated_by = excluded.updated_by,
+        updated_at = excluded.updated_at,
+        acknowledged_at = excluded.acknowledged_at,
+        resolved_at = excluded.resolved_at`
+  );
+  const runMany = db.transaction((alertIds: string[]) => {
+    alertIds.forEach((alertId) => {
+      statement.run({
+        alertId,
+        status: params.status,
+        noteInsert,
+        noteUpdate,
+        updatedBy: params.userId,
+        updatedAt: now,
+        acknowledgedAt,
+        resolvedAt,
+        createdAt: now
+      });
+    });
+  });
+  runMany(params.alertIds);
+  return Array.from(getAlertStatesByIds(params.alertIds).values());
+}
+
+export function upsertAlertLogEntries(alerts: Alert[]) {
+  if (alerts.length === 0) {
+    return;
+  }
+  const now = new Date().toISOString();
+  const insert = db.prepare(
+    `INSERT INTO alert_log (
+        alert_id,
+        source,
+        source_label,
+        name,
+        severity,
+        message,
+        timestamp,
+        instance,
+        first_seen_at,
+        last_seen_at
+      ) VALUES (
+        @alertId,
+        @source,
+        @sourceLabel,
+        @name,
+        @severity,
+        @message,
+        @timestamp,
+        @instance,
+        @firstSeenAt,
+        @lastSeenAt
+      )
+      ON CONFLICT(alert_id) DO UPDATE SET
+        source = excluded.source,
+        source_label = excluded.source_label,
+        name = excluded.name,
+        severity = excluded.severity,
+        message = excluded.message,
+        instance = excluded.instance,
+        last_seen_at = excluded.last_seen_at`
+  );
+  const rows = alerts.map((alert) => ({
+    alertId: alert.id,
+    source: alert.source,
+    sourceLabel: alert.sourceLabel ?? "",
+    name: alert.name,
+    severity: alert.severity,
+    message: alert.message,
+    timestamp: alert.timestamp,
+    instance: alert.instance ?? "",
+    firstSeenAt: now,
+    lastSeenAt: now
+  }));
+  const insertMany = db.transaction((entries: typeof rows) => {
+    entries.forEach((entry) => insert.run(entry));
+  });
+  insertMany(rows);
+  pruneAlertLogBefore(new Date(Date.now() - alertLogRetentionMs).toISOString());
+}
+
+export function pruneAlertLogBefore(cutoff: string) {
+  db.prepare("DELETE FROM alert_log WHERE last_seen_at < ?").run(cutoff);
+}
+
+export function listAlertLogSince(cutoff: string): AlertLogRow[] {
+  const rows = db
+    .prepare(
+      `SELECT * FROM alert_log
+       WHERE last_seen_at >= ?
+       ORDER BY timestamp DESC`
+    )
+    .all(cutoff) as Array<any>;
+  return rows.map(toAlertLogRow);
+}
+
+export function countAlertLogSince(cutoff: string, query?: string): number {
+  const trimmed = (query ?? "").trim();
+  const like = `%${trimmed}%`;
+  if (!trimmed) {
+    const row = db
+      .prepare("SELECT COUNT(*) as count FROM alert_log WHERE last_seen_at >= ?")
+      .get(cutoff) as { count: number };
+    return row?.count ?? 0;
+  }
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) as count FROM alert_log
+       WHERE last_seen_at >= ?
+         AND (
+           timestamp LIKE ?
+           OR name LIKE ?
+           OR severity LIKE ?
+           OR source_label LIKE ?
+           OR source LIKE ?
+           OR instance LIKE ?
+         )`
+    )
+    .get(cutoff, like, like, like, like, like, like) as { count: number };
+  return row?.count ?? 0;
+}
+
+export function listAlertLogPageSince(params: {
+  cutoff: string;
+  query?: string;
+  limit: number;
+  offset: number;
+}): AlertLogRow[] {
+  const trimmed = (params.query ?? "").trim();
+  const like = `%${trimmed}%`;
+  const rows = trimmed
+    ? db
+        .prepare(
+          `SELECT * FROM alert_log
+           WHERE last_seen_at >= ?
+             AND (
+               timestamp LIKE ?
+               OR name LIKE ?
+               OR severity LIKE ?
+               OR source_label LIKE ?
+               OR source LIKE ?
+               OR instance LIKE ?
+             )
+           ORDER BY timestamp DESC
+           LIMIT ?
+           OFFSET ?`
+        )
+        .all(
+          params.cutoff,
+          like,
+          like,
+          like,
+          like,
+          like,
+          like,
+          params.limit,
+          params.offset
+        )
+    : db
+        .prepare(
+          `SELECT * FROM alert_log
+           WHERE last_seen_at >= ?
+           ORDER BY timestamp DESC
+           LIMIT ?
+           OFFSET ?`
+        )
+        .all(params.cutoff, params.limit, params.offset);
+  return (rows as Array<any>).map(toAlertLogRow);
+}
+
+export function getSourceHealth(
+  sourceType: DataSourceHealthRow["sourceType"],
+  sourceId: string
+): DataSourceHealthRow | null {
+  const row = db
+    .prepare(
+      "SELECT * FROM data_source_health WHERE source_id = ? AND source_type = ?"
+    )
+    .get(sourceId, sourceType) as any;
+  return row ? toDataSourceHealthRow(row) : null;
+}
+
+export function listSourceHealth(): DataSourceHealthRow[] {
+  const rows = db.prepare("SELECT * FROM data_source_health").all() as Array<any>;
+  return rows.map(toDataSourceHealthRow);
+}
+
+export function recordSourceSuccess(
+  sourceType: DataSourceHealthRow["sourceType"],
+  sourceId: string
+) {
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO data_source_health (
+        source_id,
+        source_type,
+        last_success_at,
+        last_error_at,
+        last_error_message,
+        fail_count,
+        next_retry_at
+      ) VALUES (
+        @sourceId,
+        @sourceType,
+        @lastSuccessAt,
+        NULL,
+        NULL,
+        0,
+        NULL
+      )
+      ON CONFLICT(source_id, source_type) DO UPDATE SET
+        last_success_at = excluded.last_success_at,
+        last_error_at = NULL,
+        last_error_message = NULL,
+        fail_count = 0,
+        next_retry_at = NULL`
+  ).run({
+    sourceId,
+    sourceType,
+    lastSuccessAt: now
+  });
+}
+
+export function recordSourceFailure(
+  sourceType: DataSourceHealthRow["sourceType"],
+  sourceId: string,
+  message: string
+) {
+  const now = new Date().toISOString();
+  const current = getSourceHealth(sourceType, sourceId);
+  const nextFailCount = (current?.failCount ?? 0) + 1;
+  const backoffMs = Math.min(10 * 60 * 1000, 10000 * 2 ** Math.max(0, nextFailCount - 1));
+  const nextRetryAt = new Date(Date.now() + backoffMs).toISOString();
+  db.prepare(
+    `INSERT INTO data_source_health (
+        source_id,
+        source_type,
+        last_success_at,
+        last_error_at,
+        last_error_message,
+        fail_count,
+        next_retry_at
+      ) VALUES (
+        @sourceId,
+        @sourceType,
+        @lastSuccessAt,
+        @lastErrorAt,
+        @lastErrorMessage,
+        @failCount,
+        @nextRetryAt
+      )
+      ON CONFLICT(source_id, source_type) DO UPDATE SET
+        last_error_at = excluded.last_error_at,
+        last_error_message = excluded.last_error_message,
+        fail_count = excluded.fail_count,
+        next_retry_at = excluded.next_retry_at`
+  ).run({
+    sourceId,
+    sourceType,
+    lastSuccessAt: current?.lastSuccessAt ?? null,
+    lastErrorAt: now,
+    lastErrorMessage: message,
+    failCount: nextFailCount,
+    nextRetryAt
+  });
 }
 
 export function listSavedViews(userId: string): SavedViewRow[] {

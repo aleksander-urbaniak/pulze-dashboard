@@ -75,7 +75,7 @@ export default function Sidebar({ user, onLogout, settingsTabs }: SidebarProps) 
   const isSettingsSection = pathname.startsWith("/settings");
 
   return (
-    <aside className="nav-static flex min-h-screen w-64 flex-col border-r border-border bg-surface/90 px-5 py-6 shadow-card">
+    <aside className="nav-static flex w-full flex-col border-b border-border bg-surface/90 px-5 py-6 shadow-card md:sticky md:top-0 md:h-screen md:w-64 md:border-b-0 md:border-r md:overflow-y-auto">
       <Link href="/" className="group flex items-center gap-3">
         <span className="brand-logo flex h-10 w-10 items-center justify-center rounded-2xl border border-border bg-base/80">
           <span className="brand-logo__image" />
@@ -95,7 +95,7 @@ export default function Sidebar({ user, onLogout, settingsTabs }: SidebarProps) 
         </div>
       </Link>
 
-      <nav className="mt-10 flex flex-1 flex-col gap-2">
+      <nav className="mt-6 flex flex-1 flex-col gap-2 md:mt-10">
         {navItems.map((item) => {
           const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
           return (

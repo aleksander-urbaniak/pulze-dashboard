@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 
 import ThemeToggle from "../components/ThemeToggle";
 import Sidebar from "../components/Sidebar";
 import FilterSelect from "../components/FilterSelect";
 import { defaultAppearance } from "../lib/appearance";
-import type { Alert, Settings, User } from "../lib/types";
+import type { Alert, DataSourceHealth, Settings, User } from "../lib/types";
 import styles from "./page.module.css";
 
 const emptySettings: Settings = {
@@ -45,7 +45,15 @@ function writeCookieValue(name: string, value: string) {
 
 type ApiError = { source: string; message: string };
 
-type AlertResponse = { alerts: Alert[]; errors: ApiError[] };
+type AlertResponse = {
+  alerts: Alert[];
+  errors: ApiError[];
+  health?: {
+    staleThresholdMs: number;
+    sources: DataSourceHealth[];
+    staleSources: DataSourceHealth[];
+  };
+};
 
 type SettingsResponse = { settings: Settings; canEdit: boolean };
 
@@ -58,6 +66,7 @@ export default function HomePage() {
   const [user, setUser] = useState<User | null>(null);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [errors, setErrors] = useState<ApiError[]>([]);
+  const [sourceHealth, setSourceHealth] = useState<AlertResponse["health"] | null>(null);
   const [isLoadingAlerts, setIsLoadingAlerts] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterSource, setFilterSource] = useState<(typeof sourceOptions)[number]>("All");
@@ -81,10 +90,13 @@ export default function HomePage() {
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [notifications, setNotifications] = useState<Alert[]>([]);
   const [selectedAlertId, setSelectedAlertId] = useState<string | null>(null);
+  const [expandedAlertId, setExpandedAlertId] = useState<string | null>(null);
+  const [selectedAlertIds, setSelectedAlertIds] = useState<Set<string>>(new Set());
   const [alertNoteDraft, setAlertNoteDraft] = useState("");
   const lastAlertIdsRef = useRef<Set<string> | null>(null);
   const notificationsRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const listItemRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
   const sourceFilterOptions = sourceOptions.map((option) => ({ value: option, label: option }));
   const severityFilterOptions = severityOptions.map((option) => ({ value: option, label: option }));
 
@@ -96,7 +108,15 @@ export default function HomePage() {
     if (typeof window === "undefined") {
       return;
     }
-    const saved = window.localStorage.getItem(filterStorageKey) ?? readCookieValue(filterCookieKey);
+    let saved: string | null = null;
+    try {
+      saved = window.localStorage.getItem(filterStorageKey);
+    } catch {
+      saved = null;
+    }
+    if (!saved) {
+      saved = readCookieValue(filterCookieKey);
+    }
     if (!saved) {
       return;
     }
@@ -134,8 +154,172 @@ export default function HomePage() {
       severity: next?.severity ?? filterSeverity,
       viewMode: next?.viewMode ?? viewMode
     });
-    window.localStorage.setItem(filterStorageKey, payload);
+    try {
+      window.localStorage.setItem(filterStorageKey, payload);
+    } catch {
+      // Ignore storage failures and rely on cookie fallback.
+    }
     writeCookieValue(filterCookieKey, payload);
+  }
+
+  function getAlertSourceUrl(alert: Alert) {
+    const label = alert.sourceLabel?.trim() ?? "";
+    if (alert.source === "Prometheus") {
+      const match = settings.prometheusSources.find((source) =>
+        label ? source.name.trim() === label : Boolean(source.url)
+      );
+      return match?.url ?? null;
+    }
+    if (alert.source === "Zabbix") {
+      const match = settings.zabbixSources.find((source) =>
+        label ? source.name.trim() === label : Boolean(source.url)
+      );
+      return match?.url ?? null;
+    }
+    if (alert.source === "Kuma") {
+      const match = settings.kumaSources.find((source) =>
+        label ? source.name.trim() === label : Boolean(source.baseUrl)
+      );
+      return match?.baseUrl ?? null;
+    }
+    return null;
+  }
+
+  function formatRelativeTime(value: string | null | undefined) {
+    if (!value) {
+      return "never";
+    }
+    const parsed = new Date(value).getTime();
+    if (Number.isNaN(parsed)) {
+      return "unknown";
+    }
+    const diffMs = Date.now() - parsed;
+    const isFuture = diffMs < 0;
+    const diffMinutes = Math.round(Math.abs(diffMs) / 60000);
+    if (diffMinutes < 1) {
+      return isFuture ? "soon" : "just now";
+    }
+    const minutes = diffMinutes;
+    if (minutes < 60) {
+      return isFuture ? `in ${minutes}m` : `${minutes}m ago`;
+    }
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) {
+      return isFuture ? `in ${hours}h` : `${hours}h ago`;
+    }
+    const days = Math.floor(hours / 24);
+    return isFuture ? `in ${days}d` : `${days}d ago`;
+  }
+
+  function toggleAlertSelection(alertId: string) {
+    setSelectedAlertIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(alertId)) {
+        next.delete(alertId);
+      } else {
+        next.add(alertId);
+      }
+      return next;
+    });
+  }
+
+  function selectAllFiltered() {
+    setSelectedAlertIds(new Set(filteredAlerts.map((alert) => alert.id)));
+  }
+
+  function clearSelectedAlerts() {
+    setSelectedAlertIds(new Set());
+  }
+
+  async function updateAlertStateBulk(
+    status: "active" | "acknowledged" | "resolved"
+  ) {
+    const ids = Array.from(selectedAlertIds);
+    if (ids.length === 0) {
+      return;
+    }
+    const response = await fetch("/api/alerts/state/bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ alertIds: ids, status, note: null })
+    });
+    if (!response.ok) {
+      return;
+    }
+    const data = (await response.json()) as {
+      states: Array<{
+        alertId: string;
+        status: "active" | "acknowledged" | "resolved";
+        note: string;
+        updatedAt: string;
+        updatedBy: string | null;
+        acknowledgedAt: string | null;
+        resolvedAt: string | null;
+      }>;
+    };
+    const stateMap = new Map(data.states.map((state) => [state.alertId, state]));
+    setAlerts((prev) =>
+      prev.map((alert) => {
+        const state = stateMap.get(alert.id);
+        if (!state) {
+          return alert;
+        }
+        return {
+          ...alert,
+          ackStatus: state.status,
+          ackNote: state.note,
+          ackUpdatedAt: state.updatedAt,
+          ackUpdatedBy: state.updatedBy ?? undefined,
+          acknowledgedAt: state.acknowledgedAt ?? undefined,
+          resolvedAt: state.resolvedAt ?? undefined
+        };
+      })
+    );
+    clearSelectedAlerts();
+  }
+
+  function exportAlertsToCsv(targetAlerts: Alert[]) {
+    if (targetAlerts.length === 0) {
+      return;
+    }
+    const headers = [
+      "id",
+      "name",
+      "severity",
+      "source",
+      "sourceLabel",
+      "instance",
+      "message",
+      "timestamp",
+      "status",
+      "note"
+    ];
+    const escapeValue = (value: string) => `"${value.replace(/\"/g, "\"\"")}"`;
+    const rows = targetAlerts.map((alert) => [
+      alert.id,
+      alert.name,
+      alert.severity,
+      alert.source,
+      alert.sourceLabel ?? "",
+      alert.instance ?? "",
+      alert.message,
+      alert.timestamp,
+      alert.ackStatus ?? "active",
+      alert.ackNote ?? ""
+    ]);
+    const csv = [
+      headers.join(","),
+      ...rows.map((row) => row.map((value) => escapeValue(String(value))).join(","))
+    ].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "alerts.csv";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   }
 
   useEffect(() => {
@@ -170,6 +354,25 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
+    if (viewMode === "split") {
+      setExpandedAlertId(null);
+    }
+  }, [viewMode]);
+
+  useEffect(() => {
+    if (viewMode !== "split" || !selectedAlertId) {
+      return;
+    }
+    const node = listItemRefs.current.get(selectedAlertId);
+    if (!node) {
+      return;
+    }
+    requestAnimationFrame(() => {
+      node.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }, [selectedAlertId, viewMode]);
+
+  useEffect(() => {
     if (user) {
       void loadSettings();
       void loadAlerts();
@@ -200,6 +403,20 @@ export default function HomePage() {
   }, [alerts, searchTerm, filterSource, filterSeverity]);
 
   useEffect(() => {
+    setSelectedAlertIds((prev) => {
+      if (prev.size === 0) {
+        return prev;
+      }
+      const allowed = new Set(filteredAlerts.map((alert) => alert.id));
+      const next = new Set(Array.from(prev).filter((id) => allowed.has(id)));
+      if (next.size === prev.size) {
+        return prev;
+      }
+      return next;
+    });
+  }, [filteredAlerts]);
+
+  useEffect(() => {
     if (filteredAlerts.length === 0) {
       setSelectedAlertId(null);
       return;
@@ -208,6 +425,15 @@ export default function HomePage() {
       setSelectedAlertId(filteredAlerts[0].id);
     }
   }, [filteredAlerts, selectedAlertId]);
+
+  useEffect(() => {
+    if (!expandedAlertId) {
+      return;
+    }
+    if (!filteredAlerts.some((alert) => alert.id === expandedAlertId)) {
+      setExpandedAlertId(null);
+    }
+  }, [expandedAlertId, filteredAlerts]);
 
   useEffect(() => {
     const current = filteredAlerts.find((alert) => alert.id === selectedAlertId);
@@ -260,6 +486,7 @@ export default function HomePage() {
     const data = (await response.json()) as AlertResponse;
     setAlerts(data.alerts);
     setErrors(data.errors ?? []);
+    setSourceHealth(data.health ?? null);
     const currentIds = new Set(data.alerts.map((alert) => alert.id));
     if (lastAlertIdsRef.current) {
       const newAlerts = data.alerts.filter((alert) => !lastAlertIdsRef.current?.has(alert.id));
@@ -535,9 +762,13 @@ export default function HomePage() {
 
   const selectedAlert = filteredAlerts.find((alert) => alert.id === selectedAlertId) ?? null;
   const selectedAlertStatus = selectedAlert?.ackStatus ?? "active";
+  const selectedAlertSourceUrl = selectedAlert ? getAlertSourceUrl(selectedAlert) : null;
+  const hasSelection = selectedAlertIds.size > 0;
+  const allSelected = filteredAlerts.length > 0 && selectedAlertIds.size === filteredAlerts.length;
+  const staleSources = sourceHealth?.staleSources ?? [];
 
   return (
-    <div className="min-h-screen flex bg-base">
+    <div className="min-h-screen flex flex-col bg-base md:flex-row">
       <Sidebar user={user} onLogout={handleLogout} />
       <div className="flex-1">
         <main className="mx-auto w-full max-w-6xl px-6 py-8">
@@ -603,41 +834,52 @@ export default function HomePage() {
                       </button>
                     ) : null}
                   </div>
-                  {notifications.length === 0 ? (
-                    <p className="mt-3 text-sm text-muted">No new alerts yet.</p>
-                  ) : (
-                    <div className="mt-3 space-y-3">
-                      {notifications.map((alert) => (
-                        <div
-                          key={`notify-${alert.id}`}
-                          className="rounded-xl border border-border bg-base/60 px-3 py-2"
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-sm font-semibold">{alert.name}</span>
-                            <span
-                              className={clsx(
-                                "rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.2em]",
-                                alert.severity === "critical"
-                                  ? "bg-red-500/15 text-red-500"
-                                  : alert.severity === "warning"
-                                    ? "bg-yellow-400/20 text-yellow-600"
-                                    : "bg-emerald-400/15 text-emerald-500"
-                              )}
+                    {notifications.length === 0 ? (
+                      <p className="mt-3 text-sm text-muted">No new alerts yet.</p>
+                    ) : (
+                      <div className="mt-3 space-y-3">
+                        {notifications.map((alert) => {
+                          const alertSourceUrl = getAlertSourceUrl(alert);
+                          return (
+                            <div
+                              key={`notify-${alert.id}`}
+                              className="rounded-xl border border-border bg-base/60 px-3 py-2"
                             >
-                              {alert.severity}
-                            </span>
-                          </div>
-                          <div className="mt-2 flex items-center justify-between text-xs text-muted">
-                            <span>{alert.sourceLabel || alert.source}</span>
-                            <span>{new Date(alert.timestamp).toLocaleString()}</span>
-                          </div>
-                          {alert.instance ? (
-                            <p className="mt-1 text-xs text-muted">{alert.instance}</p>
-                          ) : null}
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="text-sm font-semibold">
+                                  {alertSourceUrl ? (
+                                    <a href={alertSourceUrl} className="text-accent hover:underline">
+                                      {alert.name}
+                                    </a>
+                                  ) : (
+                                    alert.name
+                                  )}
+                                </span>
+                                <span
+                                  className={clsx(
+                                    "rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.2em]",
+                                    alert.severity === "critical"
+                                      ? "bg-red-500/15 text-red-500"
+                                      : alert.severity === "warning"
+                                        ? "bg-yellow-400/20 text-yellow-600"
+                                        : "bg-emerald-400/15 text-emerald-500"
+                                  )}
+                                >
+                                  {alert.severity}
+                                </span>
+                              </div>
+                              <div className="mt-2 flex items-center justify-between text-xs text-muted">
+                                <span>{alert.sourceLabel || alert.source}</span>
+                                <span>{new Date(alert.timestamp).toLocaleString()}</span>
+                              </div>
+                              {alert.instance ? (
+                                <p className="mt-1 text-xs text-muted">{alert.instance}</p>
+                              ) : null}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                 </div>
               </div>
               <div className="rounded-full border border-border bg-surface/80 px-4 py-2 text-xs uppercase tracking-[0.2em]">
@@ -645,6 +887,27 @@ export default function HomePage() {
               </div>
             </div>
           </div>
+
+          {staleSources.length > 0 ? (
+            <div className="mt-4 rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-600 dark:text-amber-400">
+              <p className="text-xs uppercase tracking-[0.2em] text-amber-600 dark:text-amber-400">
+                Stale sources
+              </p>
+              <p className="mt-2 text-sm text-amber-600 dark:text-amber-400">
+                {staleSources
+                  .map((source) => {
+                    const label = source.sourceLabel
+                      ? `${source.sourceType} (${source.sourceLabel})`
+                      : source.sourceType;
+                    const lastSuccess = formatRelativeTime(source.lastSuccessAt ?? null);
+                    const retry =
+                      source.nextRetryAt ? `, retry ${formatRelativeTime(source.nextRetryAt)}` : "";
+                    return `${label} last success ${lastSuccess}${retry}`;
+                  })
+                  .join(" | ")}
+              </p>
+            </div>
+          ) : null}
 
           <div className={styles.latestHeader}>
             <div>
@@ -761,60 +1024,261 @@ export default function HomePage() {
             </div>
           </div>
 
-          {viewMode === "cards" ? (
-            <div className="mt-4 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-              {filteredAlerts.length === 0 ? (
-                <div className="col-span-full rounded-2xl border border-border bg-base/40 p-8 text-center text-sm text-muted">
-                  No alerts match your filters.
-                </div>
-              ) : (
-                filteredAlerts.map((alert) => (
-                  <div
-                    key={alert.id}
-                    className={clsx(
-                      "relative rounded-2xl border border-border bg-base/40 p-5",
-                      alert.severity === "critical"
-                        ? "border-l-4 border-l-red-500"
-                        : alert.severity === "warning"
-                          ? "border-l-4 border-l-yellow-400"
-                          : "border-l-4 border-l-emerald-400"
-                    )}
+          {filteredAlerts.length > 0 ? (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-surface/90 px-4 py-3 text-xs uppercase tracking-[0.2em] text-muted">
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (allSelected) {
+                      clearSelectedAlerts();
+                    } else {
+                      selectAllFiltered();
+                    }
+                  }}
+                  className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em]"
+                >
+                  {allSelected ? "Clear all" : "Select all"}
+                </button>
+                {hasSelection ? (
+                  <span className="text-xs uppercase tracking-[0.2em] text-muted">
+                    {selectedAlertIds.size} selected
+                  </span>
+                ) : null}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = hasSelection
+                      ? filteredAlerts.filter((alert) => selectedAlertIds.has(alert.id))
+                      : filteredAlerts;
+                    exportAlertsToCsv(target);
+                  }}
+                  className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em]"
+                >
+                  Export CSV
+                </button>
+                <button
+                  type="button"
+                  disabled={!hasSelection}
+                  onClick={() => updateAlertStateBulk("acknowledged")}
+                  className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em] disabled:opacity-50"
+                >
+                  Acknowledge
+                </button>
+                <button
+                  type="button"
+                  disabled={!hasSelection}
+                  onClick={() => updateAlertStateBulk("resolved")}
+                  className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em] disabled:opacity-50"
+                >
+                  Resolve
+                </button>
+                {hasSelection ? (
+                  <button
+                    type="button"
+                    onClick={clearSelectedAlerts}
+                    className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em] text-muted"
                   >
-                    <span className="absolute right-4 top-4 rounded-full bg-accentSoft px-3 py-1 text-xs font-semibold text-accent">
-                      {alert.source}
-                    </span>
-                    <p className="text-xs uppercase tracking-[0.3em] text-muted">{alert.severity}</p>
-                    {alert.ackStatus && alert.ackStatus !== "active" ? (
-                      <span
+                    Clear
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+
+          {viewMode === "cards" ? (
+            <div className="mt-4">
+              <button
+                type="button"
+                aria-label="Close expanded alert"
+                onClick={() => setExpandedAlertId(null)}
+                tabIndex={expandedAlertId ? 0 : -1}
+                aria-hidden={!expandedAlertId}
+                className={clsx(
+                  styles.focusOverlay,
+                  expandedAlertId ? styles.focusOverlayVisible : null
+                )}
+              />
+              <div className={styles.cardGrid}>
+                {filteredAlerts.length === 0 ? (
+                  <div className="col-span-full rounded-2xl border border-border bg-base/40 p-8 text-center text-sm text-muted">
+                    No alerts match your filters.
+                  </div>
+                ) : (
+                filteredAlerts.map((alert) => {
+                  const alertSourceUrl = getAlertSourceUrl(alert);
+                  const isExpanded = expandedAlertId === alert.id;
+                  const alertStatus = alert.ackStatus ?? "active";
+                  const notePreview = alert.ackNote?.trim();
+                  const instanceLabel = alert.sourceLabel || alert.source;
+                  const isSelected = selectedAlertIds.has(alert.id);
+                  return (
+                    <div
+                      key={alert.id}
+                      role="button"
+                      tabIndex={0}
+                        onClick={() => {
+                          setSelectedAlertId(alert.id);
+                          setExpandedAlertId((prev) => (prev === alert.id ? null : alert.id));
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            setSelectedAlertId(alert.id);
+                            setExpandedAlertId((prev) => (prev === alert.id ? null : alert.id));
+                          }
+                        }}
                         className={clsx(
-                          "mt-2 inline-flex rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.2em]",
-                          alert.ackStatus === "acknowledged"
-                            ? "bg-blue-500/15 text-blue-600"
-                            : "bg-slate-500/15 text-slate-600"
+                          styles.card,
+                          expandedAlertId && !isExpanded ? styles.cardMuted : null,
+                          isExpanded ? styles.cardExpanded : null,
+                          alert.severity === "critical"
+                            ? styles.cardSeverityCritical
+                            : alert.severity === "warning"
+                              ? styles.cardSeverityWarning
+                              : styles.cardSeverityInfo
                         )}
                       >
-                        {alert.ackStatus}
-                      </span>
-                    ) : null}
-                    <h3 className="mt-3 text-lg font-semibold">{alert.name}</h3>
-                    {alert.instance ? (
-                      <p className="mt-2 text-xs uppercase tracking-[0.2em] text-muted">
-                        {alert.instance}
-                      </p>
-                    ) : null}
-                    <p className="mt-3 text-sm text-muted">{alert.message}</p>
-                    <p className="mt-6 text-xs text-muted">
-                      {new Date(alert.timestamp).toLocaleString()}
-                    </p>
-                  </div>
-                ))
-              )}
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            toggleAlertSelection(alert.id);
+                          }}
+                          aria-pressed={isSelected}
+                          aria-label={isSelected ? "Deselect alert" : "Select alert"}
+                          className={clsx(
+                            "absolute left-4 top-4 flex h-5 w-5 items-center justify-center rounded-full border text-[10px]",
+                            isSelected
+                              ? "border-accent bg-accent text-white"
+                              : "border-border bg-base/80 text-muted"
+                          )}
+                        >
+                          {isSelected ? "x" : ""}
+                        </button>
+                        <span className="absolute right-4 top-4 max-w-[60%] truncate rounded-full bg-accentSoft px-3 py-1 text-xs font-semibold text-accent">
+                          {instanceLabel}
+                        </span>
+                        <p className={clsx("text-xs uppercase tracking-[0.3em] text-muted", styles.cardSeverityLabel)}>
+                          {alert.severity}
+                        </p>
+                        {alert.ackStatus && alert.ackStatus !== "active" ? (
+                          <span
+                            className={clsx(
+                              "mt-2 inline-flex rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.2em]",
+                              alert.ackStatus === "acknowledged"
+                                ? "bg-blue-500/15 text-blue-600"
+                                : "bg-slate-500/15 text-slate-600"
+                            )}
+                          >
+                            {alert.ackStatus}
+                          </span>
+                        ) : null}
+                        <h3 className="mt-3 text-lg font-semibold break-all">
+                          {alertSourceUrl ? (
+                            <a
+                              href={alertSourceUrl}
+                              className="text-accent hover:underline"
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              {alert.name}
+                            </a>
+                          ) : (
+                            alert.name
+                          )}
+                        </h3>
+                        {alert.instance ? (
+                          <p className="mt-2 text-xs uppercase tracking-[0.2em] text-muted break-words">
+                            {alert.instance}
+                          </p>
+                        ) : null}
+                        <p className="mt-3 text-sm text-muted break-words">{alert.message}</p>
+                        {notePreview && !isExpanded ? (
+                          <p className={styles.cardNotePreview}>
+                            Note: {notePreview}
+                          </p>
+                        ) : null}
+                        <p className="mt-6 text-xs text-muted">
+                          {new Date(alert.timestamp).toLocaleString()}
+                        </p>
+                        <div
+                          className={clsx(
+                            styles.cardDetail,
+                            isExpanded ? styles.cardDetailOpen : null
+                          )}
+                          onClick={(event) => event.stopPropagation()}
+                          aria-hidden={!isExpanded}
+                        >
+                          <div className="rounded-xl border border-border bg-base/40 p-4">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div>
+                                <p className="text-xs uppercase tracking-[0.2em] text-muted">
+                                  Status
+                                </p>
+                                <p className="mt-2 text-sm font-semibold capitalize">
+                                  {alertStatus}
+                                </p>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => updateAlertState(alert.id, "acknowledged")}
+                                  className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em]"
+                                >
+                                  Acknowledge
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => updateAlertState(alert.id, "resolved")}
+                                  className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em]"
+                                >
+                                  Resolve
+                                </button>
+                                {alertStatus !== "active" ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => updateAlertState(alert.id, "active")}
+                                    className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em] text-muted"
+                                  >
+                                    Reopen
+                                  </button>
+                                ) : null}
+                              </div>
+                            </div>
+                            <div className="mt-4 space-y-2">
+                              <label className="text-xs uppercase tracking-[0.2em] text-muted">
+                                Note
+                              </label>
+                              <textarea
+                                value={alertNoteDraft}
+                                onChange={(event) => setAlertNoteDraft(event.target.value)}
+                                placeholder="Add acknowledgment notes..."
+                                className="h-24 w-full rounded-xl border border-border bg-base/60 px-3 py-2 text-sm"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => updateAlertState(alert.id, alertStatus)}
+                                className="rounded-full border border-border px-4 py-2 text-xs uppercase tracking-[0.2em]"
+                              >
+                                Save Note
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
             </div>
           ) : viewMode === "table" ? (
-            <div className="mt-4 overflow-hidden rounded-2xl border border-border bg-surface/90 shadow-card">
+            <div className="mt-4 overflow-x-auto rounded-2xl border border-border bg-surface/90 shadow-card">
               <table className="w-full text-sm">
                 <thead className="bg-base/60 text-xs uppercase tracking-[0.2em] text-muted">
                   <tr>
+                    <th className="px-4 py-3 text-left">Select</th>
                     <th className="px-4 py-3 text-left">Instance label</th>
                     <th className="px-4 py-3 text-left">Severity</th>
                     <th className="px-4 py-3 text-left">State</th>
@@ -826,51 +1290,186 @@ export default function HomePage() {
                 <tbody>
                   {filteredAlerts.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-4 py-6 text-center text-sm text-muted">
+                      <td colSpan={7} className="px-4 py-6 text-center text-sm text-muted">
                         No alerts match your filters.
                       </td>
                     </tr>
                   ) : (
-                    filteredAlerts.map((alert) => (
-                      <tr key={alert.id} className="border-t border-border bg-base/40">
-                        <td className="px-4 py-3 font-semibold">
-                          {alert.sourceLabel || alert.source}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span
+                    filteredAlerts.map((alert) => {
+                      const alertSourceUrl = getAlertSourceUrl(alert);
+                      const isExpanded = expandedAlertId === alert.id;
+                      const alertStatus = alert.ackStatus ?? "active";
+                      const isSelected = selectedAlertIds.has(alert.id);
+                      return (
+                        <Fragment key={alert.id}>
+                          <tr
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => {
+                              setSelectedAlertId(alert.id);
+                              setExpandedAlertId((prev) => (prev === alert.id ? null : alert.id));
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                setSelectedAlertId(alert.id);
+                                setExpandedAlertId((prev) =>
+                                  prev === alert.id ? null : alert.id
+                                );
+                              }
+                            }}
                             className={clsx(
-                              "rounded-full px-3 py-1 text-xs uppercase tracking-[0.2em]",
-                              alert.severity === "critical"
-                                ? "bg-red-500/15 text-red-500"
-                                : alert.severity === "warning"
-                                  ? "bg-yellow-400/20 text-yellow-600"
-                                  : "bg-emerald-400/15 text-emerald-500"
+                              "border-t border-border bg-base/40",
+                              isExpanded ? styles.tableRowActive : null
                             )}
                           >
-                            {alert.severity}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span
-                            className={clsx(
-                              "rounded-full px-3 py-1 text-xs uppercase tracking-[0.2em]",
-                              alert.ackStatus === "acknowledged"
-                                ? "bg-blue-500/15 text-blue-600"
-                                : alert.ackStatus === "resolved"
-                                  ? "bg-slate-500/15 text-slate-600"
-                                  : "bg-emerald-400/15 text-emerald-500"
-                            )}
+                            <td className="px-4 py-3">
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  toggleAlertSelection(alert.id);
+                                }}
+                                aria-pressed={isSelected}
+                                aria-label={isSelected ? "Deselect alert" : "Select alert"}
+                                className={clsx(
+                                  "flex h-5 w-5 items-center justify-center rounded-full border text-[10px]",
+                                  isSelected
+                                    ? "border-accent bg-accent text-white"
+                                    : "border-border bg-base/80 text-muted"
+                                )}
+                              >
+                                {isSelected ? "x" : ""}
+                              </button>
+                            </td>
+                            <td className="px-4 py-3 font-semibold">
+                              {alert.sourceLabel || alert.source}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span
+                                className={clsx(
+                                  "rounded-full px-3 py-1 text-xs uppercase tracking-[0.2em]",
+                                  alert.severity === "critical"
+                                    ? "bg-red-500/15 text-red-500"
+                                    : alert.severity === "warning"
+                                      ? "bg-yellow-400/20 text-yellow-600"
+                                      : "bg-emerald-400/15 text-emerald-500"
+                                )}
+                              >
+                                {alert.severity}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span
+                                className={clsx(
+                                  "rounded-full px-3 py-1 text-xs uppercase tracking-[0.2em]",
+                                  alert.ackStatus === "acknowledged"
+                                    ? "bg-blue-500/15 text-blue-600"
+                                    : alert.ackStatus === "resolved"
+                                      ? "bg-slate-500/15 text-slate-600"
+                                      : "bg-emerald-400/15 text-emerald-500"
+                                )}
+                              >
+                                {alert.ackStatus ?? "active"}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-muted">{alert.instance || "-"}</td>
+                            <td className="px-4 py-3">
+                              {alertSourceUrl ? (
+                                <a
+                                  href={alertSourceUrl}
+                                  className="text-accent hover:underline"
+                                  onClick={(event) => event.stopPropagation()}
+                                >
+                                  {alert.name}
+                                </a>
+                              ) : (
+                                alert.name
+                              )}
+                            </td>
+                            <td className="px-4 py-3 text-muted">
+                              {new Date(alert.timestamp).toLocaleString()}
+                            </td>
+                          </tr>
+                          <tr
+                            className={styles.tableDetailRow}
+                            aria-hidden={!isExpanded}
                           >
-                            {alert.ackStatus ?? "active"}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-muted">{alert.instance || "-"}</td>
-                        <td className="px-4 py-3">{alert.name}</td>
-                        <td className="px-4 py-3 text-muted">
-                          {new Date(alert.timestamp).toLocaleString()}
-                        </td>
-                      </tr>
-                    ))
+                            <td
+                              colSpan={7}
+                              className={clsx(
+                                styles.tableDetailCell,
+                                !isExpanded ? styles.tableDetailCellCollapsed : null
+                              )}
+                            >
+                              <div
+                                className={clsx(
+                                  styles.tableDetail,
+                                  isExpanded ? styles.tableDetailOpen : null
+                                )}
+                                onClick={(event) => event.stopPropagation()}
+                              >
+                                <div className="rounded-xl border border-border bg-base/40 p-4">
+                                  <div className="flex flex-wrap items-center justify-between gap-3">
+                                    <div>
+                                      <p className="text-xs uppercase tracking-[0.2em] text-muted">
+                                        Status
+                                      </p>
+                                      <p className="mt-2 text-sm font-semibold capitalize">
+                                        {alertStatus}
+                                      </p>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => updateAlertState(alert.id, "acknowledged")}
+                                        className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em]"
+                                      >
+                                        Acknowledge
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => updateAlertState(alert.id, "resolved")}
+                                        className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em]"
+                                      >
+                                        Resolve
+                                      </button>
+                                      {alertStatus !== "active" ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => updateAlertState(alert.id, "active")}
+                                          className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em] text-muted"
+                                        >
+                                          Reopen
+                                        </button>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                  <div className="mt-4 space-y-2">
+                                    <label className="text-xs uppercase tracking-[0.2em] text-muted">
+                                      Note
+                                    </label>
+                                    <textarea
+                                      value={alertNoteDraft}
+                                      onChange={(event) => setAlertNoteDraft(event.target.value)}
+                                      placeholder="Add acknowledgment notes..."
+                                      className="h-24 w-full rounded-xl border border-border bg-base/60 px-3 py-2 text-sm"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={() => updateAlertState(alert.id, alertStatus)}
+                                      className="rounded-full border border-border px-4 py-2 text-xs uppercase tracking-[0.2em]"
+                                    >
+                                      Save Note
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        </Fragment>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -890,56 +1489,105 @@ export default function HomePage() {
                   </div>
                 ) : (
                   <div className="mt-4 space-y-3">
-                    {filteredAlerts.map((alert) => (
-                      <button
-                        key={alert.id}
-                        type="button"
-                        onClick={() => setSelectedAlertId(alert.id)}
-                        className={clsx(
-                          "w-full rounded-xl border px-4 py-3 text-left transition",
-                          selectedAlertId === alert.id
-                            ? "border-accent bg-accent/10"
-                            : "border-border bg-base/40 hover:border-accent/40"
-                        )}
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-sm font-semibold">{alert.name}</span>
-                          <div className="flex items-center gap-2">
-                            <span
-                              className={clsx(
-                                "rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.2em]",
-                                alert.severity === "critical"
-                                  ? "bg-red-500/15 text-red-500"
-                                  : alert.severity === "warning"
-                                    ? "bg-yellow-400/20 text-yellow-600"
-                                    : "bg-emerald-400/15 text-emerald-500"
-                              )}
-                            >
-                              {alert.severity}
-                            </span>
-                            {alert.ackStatus && alert.ackStatus !== "active" ? (
+                    {filteredAlerts.map((alert) => {
+                      const alertSourceUrl = getAlertSourceUrl(alert);
+                      const isSelected = selectedAlertIds.has(alert.id);
+                      return (
+                        <div
+                          key={alert.id}
+                          role="button"
+                          tabIndex={0}
+                          ref={(node) => {
+                            if (node) {
+                              listItemRefs.current.set(alert.id, node);
+                            } else {
+                              listItemRefs.current.delete(alert.id);
+                            }
+                          }}
+                          onClick={() => setSelectedAlertId(alert.id)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              setSelectedAlertId(alert.id);
+                            }
+                          }}
+                          className={clsx(
+                            "w-full rounded-xl border px-4 py-3 text-left transition",
+                            selectedAlertId === alert.id
+                              ? "border-accent bg-accent/10"
+                              : "border-border bg-base/40 hover:border-accent/40"
+                          )}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  toggleAlertSelection(alert.id);
+                                }}
+                                aria-pressed={isSelected}
+                                aria-label={isSelected ? "Deselect alert" : "Select alert"}
+                                className={clsx(
+                                  "flex h-5 w-5 items-center justify-center rounded-full border text-[10px]",
+                                  isSelected
+                                    ? "border-accent bg-accent text-white"
+                                    : "border-border bg-base/80 text-muted"
+                                )}
+                              >
+                                {isSelected ? "x" : ""}
+                              </button>
+                              <span className="text-sm font-semibold">
+                                {alertSourceUrl ? (
+                                  <a
+                                    href={alertSourceUrl}
+                                    className="text-accent hover:underline"
+                                    onClick={(event) => event.stopPropagation()}
+                                  >
+                                    {alert.name}
+                                  </a>
+                                ) : (
+                                  alert.name
+                                )}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
                               <span
                                 className={clsx(
                                   "rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.2em]",
-                                  alert.ackStatus === "acknowledged"
-                                    ? "bg-blue-500/15 text-blue-600"
-                                    : "bg-slate-500/15 text-slate-600"
+                                  alert.severity === "critical"
+                                    ? "bg-red-500/15 text-red-500"
+                                    : alert.severity === "warning"
+                                      ? "bg-yellow-400/20 text-yellow-600"
+                                      : "bg-emerald-400/15 text-emerald-500"
                                 )}
                               >
-                                {alert.ackStatus}
+                                {alert.severity}
                               </span>
-                            ) : null}
+                              {alert.ackStatus && alert.ackStatus !== "active" ? (
+                                <span
+                                  className={clsx(
+                                    "rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.2em]",
+                                    alert.ackStatus === "acknowledged"
+                                      ? "bg-blue-500/15 text-blue-600"
+                                      : "bg-slate-500/15 text-slate-600"
+                                  )}
+                                >
+                                  {alert.ackStatus}
+                                </span>
+                              ) : null}
+                            </div>
                           </div>
+                          <div className="mt-2 flex items-center justify-between text-xs text-muted">
+                            <span>{alert.sourceLabel || alert.source}</span>
+                            <span>{new Date(alert.timestamp).toLocaleTimeString()}</span>
+                          </div>
+                          {alert.instance ? (
+                            <p className="mt-2 text-xs text-muted">{alert.instance}</p>
+                          ) : null}
                         </div>
-                        <div className="mt-2 flex items-center justify-between text-xs text-muted">
-                          <span>{alert.sourceLabel || alert.source}</span>
-                          <span>{new Date(alert.timestamp).toLocaleTimeString()}</span>
-                        </div>
-                        {alert.instance ? (
-                          <p className="mt-2 text-xs text-muted">{alert.instance}</p>
-                        ) : null}
-                      </button>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -958,7 +1606,15 @@ export default function HomePage() {
                       <p className="text-xs uppercase tracking-[0.3em] text-muted">
                         {selectedAlert.severity}
                       </p>
-                      <h3 className="mt-2 text-2xl font-semibold">{selectedAlert.name}</h3>
+                      <h3 className="mt-2 text-2xl font-semibold">
+                        {selectedAlertSourceUrl ? (
+                          <a href={selectedAlertSourceUrl} className="text-accent hover:underline">
+                            {selectedAlert.name}
+                          </a>
+                        ) : (
+                          selectedAlert.name
+                        )}
+                      </h3>
                       {selectedAlert.instance ? (
                         <p className="mt-1 text-sm text-muted">{selectedAlert.instance}</p>
                       ) : null}

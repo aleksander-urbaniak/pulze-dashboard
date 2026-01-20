@@ -8,6 +8,7 @@ import type {
   PrometheusSource,
   ZabbixSource
 } from "./types";
+import { getSourceHealth, recordSourceFailure, recordSourceSuccess } from "./db";
 import type { SettingsRow } from "./db";
 
 export type AlertFetchError = { source: string; message: string };
@@ -57,6 +58,21 @@ function buildAuthHeader(type: "none" | "basic" | "bearer", value: string | unde
     return { Authorization: `Bearer ${value}` };
   }
   return {} as Record<string, string>;
+}
+
+function getBackoffUntil(
+  sourceType: "Prometheus" | "Zabbix" | "Kuma",
+  sourceId: string
+) {
+  const health = getSourceHealth(sourceType, sourceId);
+  if (!health?.nextRetryAt) {
+    return null;
+  }
+  const nextRetryAt = new Date(health.nextRetryAt).getTime();
+  if (Number.isNaN(nextRetryAt) || nextRetryAt <= Date.now()) {
+    return null;
+  }
+  return health.nextRetryAt;
 }
 
 function isDownStatus(status: unknown) {
@@ -255,12 +271,23 @@ export async function fetchPrometheusAlerts(settings: SettingsRow): Promise<Aler
     if (!source.url) {
       continue;
     }
-    try {
-      alerts.push(...(await fetchPrometheusFromSource(source)));
-    } catch (error) {
+    const backoffUntil = getBackoffUntil("Prometheus", source.id);
+    if (backoffUntil) {
       errors.push({
         source: sourceLabel("Prometheus", source.name),
-        message: error instanceof Error ? error.message : "Request failed"
+        message: `Backoff active until ${backoffUntil}`
+      });
+      continue;
+    }
+    try {
+      alerts.push(...(await fetchPrometheusFromSource(source)));
+      recordSourceSuccess("Prometheus", source.id);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Request failed";
+      recordSourceFailure("Prometheus", source.id, message);
+      errors.push({
+        source: sourceLabel("Prometheus", source.name),
+        message
       });
     }
   }
@@ -375,12 +402,23 @@ export async function fetchZabbixAlerts(settings: SettingsRow): Promise<AlertFet
     if (!source.url) {
       continue;
     }
-    try {
-      alerts.push(...(await fetchZabbixFromSource(source)));
-    } catch (error) {
+    const backoffUntil = getBackoffUntil("Zabbix", source.id);
+    if (backoffUntil) {
       errors.push({
         source: sourceLabel("Zabbix", source.name),
-        message: error instanceof Error ? error.message : "Request failed"
+        message: `Backoff active until ${backoffUntil}`
+      });
+      continue;
+    }
+    try {
+      alerts.push(...(await fetchZabbixFromSource(source)));
+      recordSourceSuccess("Zabbix", source.id);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Request failed";
+      recordSourceFailure("Zabbix", source.id, message);
+      errors.push({
+        source: sourceLabel("Zabbix", source.name),
+        message
       });
     }
   }
@@ -556,16 +594,27 @@ export async function fetchKumaAlerts(settings: SettingsRow): Promise<AlertFetch
     if (!source.baseUrl) {
       continue;
     }
+    const backoffUntil = getBackoffUntil("Kuma", source.id);
+    if (backoffUntil) {
+      errors.push({
+        source: sourceLabel("Kuma", source.name),
+        message: `Backoff active until ${backoffUntil}`
+      });
+      continue;
+    }
     try {
       const sourceAlerts =
         source.mode === "apiKey"
           ? await fetchKumaApiKeyAlerts(source)
           : await fetchKumaStatusAlerts(source);
       alerts.push(...sourceAlerts);
+      recordSourceSuccess("Kuma", source.id);
     } catch (error) {
+      const message = error instanceof Error ? error.message : "Request failed";
+      recordSourceFailure("Kuma", source.id, message);
       errors.push({
         source: sourceLabel("Kuma", source.name),
-        message: error instanceof Error ? error.message : "Request failed"
+        message
       });
     }
   }

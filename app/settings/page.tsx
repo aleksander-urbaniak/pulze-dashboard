@@ -94,6 +94,9 @@ export default function SettingsPage() {
   const [profileStatus, setProfileStatus] = useState<string | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [userStatus, setUserStatus] = useState<string | null>(null);
+  const [userUpdateStatus, setUserUpdateStatus] = useState<string | null>(null);
+  const [userPasswordDrafts, setUserPasswordDrafts] = useState<Record<string, string>>({});
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, TestState>>({});
   const [auditLogs, setAuditLogs] = useState<AuditLogResponse["logs"]>([]);
   const [auditStatus, setAuditStatus] = useState<string | null>(null);
@@ -134,14 +137,22 @@ export default function SettingsPage() {
   const settingsTabItems = useMemo(() => {
     const items = [
       { value: "data", label: "Data Sources" },
-      { value: "appearance", label: "Appearance" },
       { value: "users", label: "Users" }
     ];
+    if (isAdmin) {
+      items.splice(1, 0, { value: "appearance", label: "Appearance" });
+    }
     if (isAdmin) {
       items.push({ value: "audit", label: "Audit Log" });
     }
     return items;
   }, [isAdmin]);
+
+  useEffect(() => {
+    if (!isAdmin && activeTab === "appearance") {
+      setActiveTab("data");
+    }
+  }, [activeTab, isAdmin]);
   useEffect(() => {
     if (settingsDraft.appearance) {
       applyAppearanceToDocument(settingsDraft.appearance);
@@ -247,7 +258,7 @@ export default function SettingsPage() {
     setProfileStatus("Profile updated.");
   }
 
-  async function loadUsers() {
+  async function loadUsers(nextEditingId?: string | null) {
     if (!user || user.role !== "admin") {
       return;
     }
@@ -257,6 +268,9 @@ export default function SettingsPage() {
     }
     const data = (await response.json()) as UsersResponse;
     setUsers(data.users);
+    setUserPasswordDrafts({});
+    setUserUpdateStatus(null);
+    setEditingUserId(nextEditingId ?? null);
   }
 
   async function loadAuditLogs() {
@@ -300,13 +314,37 @@ export default function SettingsPage() {
     await loadUsers();
   }
 
-  async function updateUserRole(id: string, role: "viewer" | "admin") {
-    await fetch("/api/users", {
+  function updateUserDraft(id: string, updates: Partial<User>) {
+    setUsers((prev) =>
+      prev.map((entry) => (entry.id === id ? { ...entry, ...updates } : entry))
+    );
+  }
+
+  async function saveUserDetails(entry: User) {
+    setUserUpdateStatus(null);
+    const password = userPasswordDrafts[entry.id]?.trim();
+    const response = await fetch("/api/users", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, role })
+      body: JSON.stringify({
+        id: entry.id,
+        username: entry.username,
+        firstName: entry.firstName,
+        lastName: entry.lastName,
+        email: entry.email,
+        avatarUrl: entry.avatarUrl,
+        role: entry.role,
+        password: password || undefined
+      })
     });
-    await loadUsers();
+    if (!response.ok) {
+      const data = await response.json();
+      setUserUpdateStatus(data.error ?? "Failed to update user");
+      return;
+    }
+    setUserUpdateStatus("User updated.");
+    setUserPasswordDrafts((prev) => ({ ...prev, [entry.id]: "" }));
+    await loadUsers(entry.id);
   }
 
   function updatePrometheusSource(id: string, updates: Partial<PrometheusSource>) {
@@ -455,7 +493,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="min-h-screen flex">
+    <div className="min-h-screen flex flex-col md:flex-row">
       <Sidebar
         user={user}
         onLogout={handleLogout}
@@ -1214,7 +1252,7 @@ export default function SettingsPage() {
               ) : auditLogs.length === 0 ? (
                 <p className="mt-4 text-sm text-muted">No activity recorded yet.</p>
               ) : (
-                <div className="mt-6 overflow-hidden rounded-2xl border border-border">
+                <div className="mt-6 overflow-x-auto rounded-2xl border border-border">
                   <table className="w-full text-sm">
                     <thead className="bg-base/60 text-xs uppercase tracking-[0.2em] text-muted">
                       <tr>
@@ -1379,33 +1417,133 @@ export default function SettingsPage() {
                 </div>
 
                 <div className="rounded-3xl border border-border bg-surface/90 p-6 shadow-card backdrop-blur">
-                  <h3 className="text-lg font-semibold">Existing Users</h3>
-                  <div className="mt-4 space-y-3">
-                    {users.map((entry) => (
-                      <div
-                        key={entry.id}
-                        className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border bg-base/40 px-4 py-3"
-                      >
-                        <div>
-                          <p className="font-semibold">
-                            {entry.firstName} {entry.lastName}
-                          </p>
-                          <p className="text-xs text-muted">
-                            {entry.username} - {entry.email}
-                          </p>
-                        </div>
-                        <select
-                          value={entry.role}
-                          onChange={(event) =>
-                            updateUserRole(entry.id, event.target.value as "viewer" | "admin")
-                          }
-                          className="rounded-full border border-border bg-base/60 px-3 py-1 text-xs"
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <h3 className="text-lg font-semibold">Existing Users</h3>
+                    {userUpdateStatus ? (
+                      <p className="text-xs text-muted">{userUpdateStatus}</p>
+                    ) : null}
+                  </div>
+                  <div className="mt-4 space-y-4">
+                    {users.map((entry) => {
+                      const isEditing = editingUserId === entry.id;
+                      return (
+                        <div
+                          key={entry.id}
+                          className="rounded-2xl border border-border bg-base/40 p-4"
                         >
-                          <option value="viewer">Viewer</option>
-                          <option value="admin">Admin</option>
-                        </select>
-                      </div>
-                    ))}
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                              <p className="font-semibold">
+                                {entry.firstName} {entry.lastName}
+                              </p>
+                              <p className="text-xs text-muted">
+                                {entry.username} - {entry.email}
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="rounded-full border border-border bg-base/60 px-3 py-1 text-xs uppercase tracking-[0.2em] text-muted">
+                                {entry.role}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setEditingUserId((prev) => (prev === entry.id ? null : entry.id))
+                                }
+                                className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em]"
+                              >
+                                {isEditing ? "Close" : "Edit"}
+                              </button>
+                            </div>
+                          </div>
+                          {isEditing ? (
+                            <div className="mt-4 space-y-3">
+                              <div className="grid gap-3 md:grid-cols-2">
+                                <input
+                                  value={entry.firstName}
+                                  onChange={(event) =>
+                                    updateUserDraft(entry.id, { firstName: event.target.value })
+                                  }
+                                  placeholder="First name"
+                                  className="rounded-xl border border-border bg-base/60 px-4 py-2 text-sm"
+                                />
+                                <input
+                                  value={entry.lastName}
+                                  onChange={(event) =>
+                                    updateUserDraft(entry.id, { lastName: event.target.value })
+                                  }
+                                  placeholder="Last name"
+                                  className="rounded-xl border border-border bg-base/60 px-4 py-2 text-sm"
+                                />
+                                <input
+                                  value={entry.username}
+                                  onChange={(event) =>
+                                    updateUserDraft(entry.id, { username: event.target.value })
+                                  }
+                                  placeholder="Username"
+                                  className="rounded-xl border border-border bg-base/60 px-4 py-2 text-sm"
+                                />
+                                <input
+                                  value={entry.email}
+                                  onChange={(event) =>
+                                    updateUserDraft(entry.id, { email: event.target.value })
+                                  }
+                                  placeholder="Email"
+                                  className="rounded-xl border border-border bg-base/60 px-4 py-2 text-sm"
+                                />
+                                <input
+                                  value={entry.avatarUrl ?? ""}
+                                  onChange={(event) =>
+                                    updateUserDraft(entry.id, { avatarUrl: event.target.value })
+                                  }
+                                  placeholder="Avatar URL"
+                                  className="rounded-xl border border-border bg-base/60 px-4 py-2 text-sm"
+                                />
+                                <input
+                                  type="password"
+                                  value={userPasswordDrafts[entry.id] ?? ""}
+                                  onChange={(event) =>
+                                    setUserPasswordDrafts((prev) => ({
+                                      ...prev,
+                                      [entry.id]: event.target.value
+                                    }))
+                                  }
+                                  placeholder="New password (optional)"
+                                  className="rounded-xl border border-border bg-base/60 px-4 py-2 text-sm"
+                                />
+                                <select
+                                  value={entry.role}
+                                  onChange={(event) =>
+                                    updateUserDraft(entry.id, {
+                                      role: event.target.value as "viewer" | "admin"
+                                    })
+                                  }
+                                  className="rounded-xl border border-border bg-base/60 px-4 py-2 text-sm"
+                                >
+                                  <option value="viewer">Viewer</option>
+                                  <option value="admin">Admin</option>
+                                </select>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => void saveUserDetails(entry)}
+                                  className="rounded-full border border-border px-4 py-2 text-xs uppercase tracking-[0.2em]"
+                                >
+                                  Save changes
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void loadUsers(entry.id)}
+                                  className="rounded-full border border-border px-4 py-2 text-xs uppercase tracking-[0.2em] text-muted"
+                                >
+                                  Reset
+                                </button>
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </>

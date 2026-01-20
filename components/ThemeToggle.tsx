@@ -1,14 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTheme } from "next-themes";
 
 export default function ThemeToggle() {
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
+  const transitionTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (transitionTimeoutRef.current) {
+        window.clearTimeout(transitionTimeoutRef.current);
+      }
+    };
   }, []);
 
   const isDark = mounted && theme === "dark";
@@ -16,7 +25,18 @@ export default function ThemeToggle() {
   return (
     <button
       type="button"
-      onClick={() => setTheme(isDark ? "light" : "dark")}
+      onClick={() => {
+        if (typeof document !== "undefined") {
+          document.documentElement.classList.add("theme-transition");
+          if (transitionTimeoutRef.current) {
+            window.clearTimeout(transitionTimeoutRef.current);
+          }
+          transitionTimeoutRef.current = window.setTimeout(() => {
+            document.documentElement.classList.remove("theme-transition");
+          }, 700);
+        }
+        setTheme(isDark ? "light" : "dark");
+      }}
       className="rounded-full border border-border px-3 py-2 text-xs uppercase tracking-[0.2em]"
       aria-label="Toggle theme"
     >

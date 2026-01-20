@@ -1,9 +1,9 @@
 .filterSelect {
-  @apply rounded-xl border border-border bg-base/60 px-3 py-2 text-sm;
+  @apply w-full rounded-xl border border-border bg-base/60 px-3 py-2 text-sm sm:w-auto;
 }
 
 .searchWrap {
-  @apply relative w-full max-w-sm lg:w-[280px] lg:max-w-none;
+  @apply relative w-full max-w-full sm:max-w-md lg:w-[360px] lg:max-w-none xl:w-[420px];
 }
 
 .searchIcon {
@@ -19,15 +19,15 @@
 }
 
 .latestControls {
-  @apply flex flex-wrap items-center gap-3 lg:flex-nowrap lg:justify-end;
+  @apply flex w-full flex-wrap items-center gap-3 lg:flex-nowrap lg:justify-end;
 }
 
 .latestFilters {
-  @apply flex flex-wrap items-center gap-3 lg:flex-nowrap;
+  @apply flex w-full flex-wrap items-center gap-3 lg:flex-nowrap;
 }
 
 .viewToggle {
-  @apply flex items-center rounded-full border border-border bg-base/60 p-1 text-xs uppercase tracking-[0.2em];
+  @apply flex w-full items-center justify-between rounded-full border border-border bg-base/60 p-1 text-xs uppercase tracking-[0.2em] sm:w-auto sm:justify-start;
 }
 
 .viewToggleButton {
@@ -35,9 +35,133 @@
 }
 
 .refreshButton {
-  @apply rounded-full border border-border px-4 py-2 text-xs uppercase tracking-[0.2em];
+  @apply w-full rounded-full border border-border px-4 py-2 text-xs uppercase tracking-[0.2em] sm:w-auto;
 }
 
 .latestMeta {
   @apply mt-2 text-sm text-muted;
+}
+
+.cardGrid {
+  @apply grid gap-6 md:grid-cols-2 xl:grid-cols-3;
+}
+
+.card {
+  @apply relative rounded-2xl border border-border bg-base/40 p-5;
+  transition:
+    transform 260ms ease-in-out,
+    box-shadow 260ms ease-in-out,
+    border-color 260ms ease-in-out,
+    background-color 260ms ease-in-out,
+    opacity 260ms ease-in-out,
+    filter 260ms ease-in-out;
+}
+
+.cardSeverityLabel {
+  @apply pl-7;
+}
+
+.cardSeverityCritical {
+  @apply border-l-4 border-l-red-500;
+}
+
+.cardSeverityWarning {
+  @apply border-l-4 border-l-yellow-400;
+}
+
+.cardSeverityInfo {
+  @apply border-l-4 border-l-slate-400;
+}
+
+.cardExpanded {
+  @apply shadow-card;
+  transform: translateY(-2px) scale(1.01);
+  z-index: 20;
+}
+
+.cardMuted {
+  opacity: 0.65;
+  filter: blur(1px);
+}
+
+.cardDetail {
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-6px);
+  margin-top: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transition:
+    max-height 320ms ease-in-out,
+    opacity 320ms ease-in-out,
+    transform 320ms ease-in-out,
+    margin-top 320ms ease-in-out;
+}
+
+.cardDetailOpen {
+  max-height: 520px;
+  opacity: 1;
+  transform: translateY(0);
+  margin-top: 1rem;
+  pointer-events: auto;
+}
+
+.cardNotePreview {
+  @apply mt-3 rounded-xl border border-border bg-base/60 px-3 py-2 text-xs text-muted;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.focusOverlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgb(var(--base) / 0.3);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 260ms ease-in-out;
+  z-index: 10;
+}
+
+.focusOverlayVisible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.tableRowActive {
+  @apply bg-base/60;
+}
+
+.tableDetailRow {
+  @apply bg-base/40;
+}
+
+.tableDetailCell {
+  @apply px-4 pb-4;
+}
+
+.tableDetailCellCollapsed {
+  padding: 0;
+}
+
+.tableDetail {
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-4px);
+  overflow: hidden;
+  pointer-events: none;
+  transition:
+    max-height 320ms ease-in-out,
+    opacity 320ms ease-in-out,
+    transform 320ms ease-in-out;
+}
+
+.tableDetailOpen {
+  max-height: 420px;
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
 }
