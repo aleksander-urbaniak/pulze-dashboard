@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { createSession, createUser, countUsers } from "../../../../lib/db";
+import { createSession, createUser, countUsers, logAudit } from "../../../../lib/db";
 
 export const runtime = "nodejs";
 
@@ -37,6 +37,7 @@ export async function POST(request: Request) {
   });
 
   const session = createSession(user.id);
+  logAudit("auth.bootstrap", user.id, { username: user.username });
   const response = NextResponse.json({
     user: {
       id: user.id,
@@ -58,3 +59,4 @@ export async function POST(request: Request) {
 
   return response;
 }
+

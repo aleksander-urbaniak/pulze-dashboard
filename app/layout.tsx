@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { DM_Sans, Space_Grotesk } from "next/font/google";
 
 import ThemeProvider from "../components/ThemeProvider";
+import AppearanceProvider from "../components/AppearanceProvider";
 import "./globals.css";
 
 const display = Space_Grotesk({
@@ -25,7 +26,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${display.variable} ${body.variable}`} suppressHydrationWarning>
       <body>
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <AppearanceProvider>{children}</AppearanceProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

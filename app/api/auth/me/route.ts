@@ -5,7 +5,7 @@ import { getSessionUser } from "../../../../lib/auth";
 export const runtime = "nodejs";
 
 export async function GET() {
-  const user = getSessionUser();
+  const user = await getSessionUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -22,3 +22,4 @@ export async function GET() {
     }
   });
 }
+

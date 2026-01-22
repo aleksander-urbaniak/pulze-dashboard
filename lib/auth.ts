@@ -2,13 +2,14 @@ import { cookies } from "next/headers";
 
 import { getUserBySession } from "./db";
 
-export function getSessionToken(): string | null {
-  const token = cookies().get("pulze_session")?.value;
+export async function getSessionToken(): Promise<string | null> {
+  const cookieStore = await cookies();
+  const token = cookieStore.get("pulze_session")?.value;
   return token ?? null;
 }
 
-export function getSessionUser() {
-  const token = getSessionToken();
+export async function getSessionUser() {
+  const token = await getSessionToken();
   if (!token) {
     return null;
   }

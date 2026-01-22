@@ -4,7 +4,19 @@ import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 
-import type { KumaSource, PrometheusSource, Settings, User, ZabbixSource } from "./types";
+import type {
+  Alert,
+  AppearanceSettings,
+  AuditLogEntry,
+  KumaSource,
+  PrometheusSource,
+  SavedView,
+  SavedViewFilters,
+  Settings,
+  User,
+  ZabbixSource
+} from "./types";
+import { defaultAppearance, normalizeAppearanceSettings } from "./appearance";
 
 export interface UserRow extends User {
   passwordHash: string;
@@ -18,11 +30,42 @@ export interface SettingsRow extends Settings {
   updatedAt: string;
 }
 
+export interface AlertStateRow {
+  alertId: string;
+  status: "active" | "acknowledged" | "resolved";
+  note: string;
+  updatedBy: string | null;
+  updatedAt: string;
+  acknowledgedAt: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+}
+
+export interface AlertLogRow extends Alert {
+  firstSeenAt: string;
+  lastSeenAt: string;
+}
+
+export interface DataSourceHealthRow {
+  sourceId: string;
+  sourceType: "Prometheus" | "Zabbix" | "Kuma";
+  lastSuccessAt: string | null;
+  lastErrorAt: string | null;
+  lastErrorMessage: string | null;
+  failCount: number;
+  nextRetryAt: string | null;
+}
+
+export interface SavedViewRow extends SavedView {}
+
+export interface AuditLogRow extends AuditLogEntry {}
+
 const defaultSettings: Settings = {
   prometheusSources: [],
   zabbixSources: [],
   kumaSources: [],
-  refreshInterval: 30
+  refreshInterval: 30,
+  appearance: defaultAppearance
 };
 
 const legacyDefaults = {
@@ -36,6 +79,7 @@ const legacyDefaults = {
   kumaSlug: "",
   kumaKey: ""
 };
+const alertLogRetentionMs = 30 * 24 * 60 * 60 * 1000;
 
 function ensureDirectory(filePath: string) {
   const dir = path.dirname(filePath);
@@ -111,6 +155,15 @@ function normalizeKumaSource(input: Partial<KumaSource>): KumaSource {
   };
 }
 
+const defaultSavedViewFilters: SavedViewFilters = {
+  searchTerm: "",
+  filterTags: "",
+  filterSource: "All",
+  filterSeverity: "All",
+  filterTimeRange: "24h",
+  viewMode: "cards"
+};
+
 function coercePrometheusSources(raw: unknown): PrometheusSource[] {
   const list = Array.isArray(raw) ? raw : [];
   return list.map((item) => normalizePrometheusSource(item as Partial<PrometheusSource>));
@@ -162,15 +215,69 @@ function migrate() {
       prometheus_sources TEXT NOT NULL DEFAULT '[]',
       zabbix_sources TEXT NOT NULL DEFAULT '[]',
       kuma_sources TEXT NOT NULL DEFAULT '[]',
+      appearance_json TEXT NOT NULL DEFAULT '{}',
       refresh_interval INTEGER NOT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS alert_states (
+      alert_id TEXT PRIMARY KEY,
+      status TEXT NOT NULL,
+      note TEXT NOT NULL DEFAULT '',
+      updated_by TEXT,
+      updated_at TEXT NOT NULL,
+      acknowledged_at TEXT,
+      resolved_at TEXT,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS alert_log (
+      alert_id TEXT PRIMARY KEY,
+      source TEXT NOT NULL,
+      source_label TEXT NOT NULL DEFAULT '',
+      name TEXT NOT NULL,
+      severity TEXT NOT NULL,
+      message TEXT NOT NULL,
+      timestamp TEXT NOT NULL,
+      instance TEXT NOT NULL DEFAULT '',
+      first_seen_at TEXT NOT NULL,
+      last_seen_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS data_source_health (
+      source_id TEXT NOT NULL,
+      source_type TEXT NOT NULL,
+      last_success_at TEXT,
+      last_error_at TEXT,
+      last_error_message TEXT,
+      fail_count INTEGER NOT NULL DEFAULT 0,
+      next_retry_at TEXT,
+      PRIMARY KEY (source_id, source_type)
+    );
+
+    CREATE TABLE IF NOT EXISTS saved_views (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      filters_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id TEXT PRIMARY KEY,
+      user_id TEXT,
+      action TEXT NOT NULL,
+      details TEXT NOT NULL,
+      created_at TEXT NOT NULL
     );
   `);
 
   ensureColumn("settings", "prometheus_sources", "TEXT NOT NULL DEFAULT '[]'");
   ensureColumn("settings", "zabbix_sources", "TEXT NOT NULL DEFAULT '[]'");
   ensureColumn("settings", "kuma_sources", "TEXT NOT NULL DEFAULT '[]'");
+  ensureColumn("settings", "appearance_json", "TEXT NOT NULL DEFAULT '{}'");
   ensureColumn("users", "avatar_url", "TEXT NOT NULL DEFAULT ''");
 }
 
@@ -195,6 +302,11 @@ function toSettings(row: any): SettingsRow {
   const rawPrometheus = safeJsonParse<unknown>(row.prometheus_sources, []);
   const rawZabbix = safeJsonParse<unknown>(row.zabbix_sources, []);
   const rawKuma = safeJsonParse<unknown>(row.kuma_sources, []);
+  const rawAppearance = safeJsonParse<AppearanceSettings>(
+    row.appearance_json,
+    defaultSettings.appearance
+  );
+  const appearance = normalizeAppearanceSettings(rawAppearance);
   const prometheusSources = coercePrometheusSources(rawPrometheus);
   const zabbixSources = coerceZabbixSources(rawZabbix);
   const kumaSources = coerceKumaSources(rawKuma);
@@ -239,6 +351,46 @@ function toSettings(row: any): SettingsRow {
     zabbixSources,
     kumaSources,
     refreshInterval: row.refresh_interval,
+    appearance,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function toAlertLogRow(row: any): AlertLogRow {
+  return {
+    id: row.alert_id,
+    source: row.source,
+    sourceLabel: row.source_label || undefined,
+    name: row.name,
+    severity: row.severity,
+    message: row.message,
+    timestamp: row.timestamp,
+    instance: row.instance || undefined,
+    firstSeenAt: row.first_seen_at,
+    lastSeenAt: row.last_seen_at
+  };
+}
+
+function toDataSourceHealthRow(row: any): DataSourceHealthRow {
+  return {
+    sourceId: row.source_id,
+    sourceType: row.source_type,
+    lastSuccessAt: row.last_success_at ?? null,
+    lastErrorAt: row.last_error_at ?? null,
+    lastErrorMessage: row.last_error_message ?? null,
+    failCount: Number(row.fail_count ?? 0),
+    nextRetryAt: row.next_retry_at ?? null
+  };
+}
+
+function toSavedView(row: any): SavedViewRow {
+  const filters = safeJsonParse<SavedViewFilters>(row.filters_json, defaultSavedViewFilters);
+  return {
+    id: row.id,
+    userId: row.user_id,
+    name: row.name,
+    filters,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -263,6 +415,7 @@ function seed() {
         prometheus_sources,
         zabbix_sources,
         kuma_sources,
+        appearance_json,
         refresh_interval,
         created_at,
         updated_at
@@ -280,6 +433,7 @@ function seed() {
         @prometheusSources,
         @zabbixSources,
         @kumaSources,
+        @appearanceJson,
         @refreshInterval,
         @createdAt,
         @updatedAt
@@ -289,6 +443,7 @@ function seed() {
       prometheusSources: JSON.stringify(defaultSettings.prometheusSources),
       zabbixSources: JSON.stringify(defaultSettings.zabbixSources),
       kumaSources: JSON.stringify(defaultSettings.kumaSources),
+      appearanceJson: JSON.stringify(defaultSettings.appearance),
       refreshInterval: defaultSettings.refreshInterval,
       createdAt: now,
       updatedAt: now
@@ -419,7 +574,8 @@ export function updateSettings(updates: Partial<Settings>): SettingsRow {
     prometheusSources: updates.prometheusSources ?? current.prometheusSources,
     zabbixSources: updates.zabbixSources ?? current.zabbixSources,
     kumaSources: updates.kumaSources ?? current.kumaSources,
-    refreshInterval: updates.refreshInterval ?? current.refreshInterval
+    refreshInterval: updates.refreshInterval ?? current.refreshInterval,
+    appearance: updates.appearance ?? current.appearance
   };
 
   const normalizedPrometheus = next.prometheusSources.map(normalizePrometheusSource);
@@ -444,6 +600,7 @@ export function updateSettings(updates: Partial<Settings>): SettingsRow {
       prometheus_sources = @prometheusSources,
       zabbix_sources = @zabbixSources,
       kuma_sources = @kumaSources,
+      appearance_json = @appearanceJson,
       refresh_interval = @refreshInterval,
       updated_at = @updatedAt
      WHERE id = 1`
@@ -460,11 +617,498 @@ export function updateSettings(updates: Partial<Settings>): SettingsRow {
     prometheusSources: JSON.stringify(normalizedPrometheus),
     zabbixSources: JSON.stringify(normalizedZabbix),
     kumaSources: JSON.stringify(normalizedKuma),
+    appearanceJson: JSON.stringify(next.appearance),
     refreshInterval: next.refreshInterval,
     updatedAt: now
   });
 
   return getSettings();
+}
+
+export function getAlertStatesByIds(alertIds: string[]): Map<string, AlertStateRow> {
+  if (alertIds.length === 0) {
+    return new Map();
+  }
+  const placeholders = alertIds.map(() => "?").join(", ");
+  const rows = db
+    .prepare(
+      `SELECT * FROM alert_states WHERE alert_id IN (${placeholders})`
+    )
+    .all(...alertIds) as Array<any>;
+  const map = new Map<string, AlertStateRow>();
+  rows.forEach((row) => {
+    map.set(row.alert_id, {
+      alertId: row.alert_id,
+      status: row.status,
+      note: row.note ?? "",
+      updatedBy: row.updated_by ?? null,
+      updatedAt: row.updated_at,
+      acknowledgedAt: row.acknowledged_at ?? null,
+      resolvedAt: row.resolved_at ?? null,
+      createdAt: row.created_at
+    });
+  });
+  return map;
+}
+
+export function upsertAlertState(params: {
+  alertId: string;
+  status: "active" | "acknowledged" | "resolved";
+  note?: string | null;
+  userId: string | null;
+}): AlertStateRow {
+  const now = new Date().toISOString();
+  const acknowledgedAt = params.status === "acknowledged" ? now : null;
+  const resolvedAt = params.status === "resolved" ? now : null;
+  const noteInsert = params.note ?? "";
+  const noteUpdate = params.note ?? null;
+  db.prepare(
+    `INSERT INTO alert_states (
+        alert_id,
+        status,
+        note,
+        updated_by,
+        updated_at,
+        acknowledged_at,
+        resolved_at,
+        created_at
+      ) VALUES (
+        @alertId,
+        @status,
+        @noteInsert,
+        @updatedBy,
+        @updatedAt,
+        @acknowledgedAt,
+        @resolvedAt,
+        @createdAt
+      )
+      ON CONFLICT(alert_id) DO UPDATE SET
+        status = excluded.status,
+        note = CASE
+          WHEN @noteUpdate IS NULL THEN alert_states.note
+          ELSE @noteUpdate
+        END,
+        updated_by = excluded.updated_by,
+        updated_at = excluded.updated_at,
+        acknowledged_at = excluded.acknowledged_at,
+        resolved_at = excluded.resolved_at`
+  ).run({
+    alertId: params.alertId,
+    status: params.status,
+    noteInsert,
+    noteUpdate,
+    updatedBy: params.userId,
+    updatedAt: now,
+    acknowledgedAt,
+    resolvedAt,
+    createdAt: now
+  });
+  const row = db
+    .prepare("SELECT * FROM alert_states WHERE alert_id = ?")
+    .get(params.alertId) as any;
+  return {
+    alertId: row.alert_id,
+    status: row.status,
+    note: row.note ?? "",
+    updatedBy: row.updated_by ?? null,
+    updatedAt: row.updated_at,
+    acknowledgedAt: row.acknowledged_at ?? null,
+    resolvedAt: row.resolved_at ?? null,
+    createdAt: row.created_at
+  };
+}
+
+export function resolveMissingAlertStates(activeAlertIds: string[]) {
+  const now = new Date().toISOString();
+  if (activeAlertIds.length === 0) {
+    db.prepare(
+      `UPDATE alert_states
+        SET status = 'resolved',
+            resolved_at = @resolvedAt,
+            updated_at = @updatedAt
+        WHERE status != 'resolved'`
+    ).run({ resolvedAt: now, updatedAt: now });
+    return;
+  }
+  const placeholders = activeAlertIds.map(() => "?").join(", ");
+  db.prepare(
+    `UPDATE alert_states
+      SET status = 'resolved',
+          resolved_at = ?,
+          updated_at = ?
+      WHERE status != 'resolved' AND alert_id NOT IN (${placeholders})`
+  ).run(now, now, ...activeAlertIds);
+}
+
+export function upsertAlertStatesBulk(params: {
+  alertIds: string[];
+  status: "active" | "acknowledged" | "resolved";
+  note?: string | null;
+  userId: string | null;
+}): AlertStateRow[] {
+  if (params.alertIds.length === 0) {
+    return [];
+  }
+  const now = new Date().toISOString();
+  const acknowledgedAt = params.status === "acknowledged" ? now : null;
+  const resolvedAt = params.status === "resolved" ? now : null;
+  const noteInsert = params.note ?? "";
+  const noteUpdate = params.note ?? null;
+  const statement = db.prepare(
+    `INSERT INTO alert_states (
+        alert_id,
+        status,
+        note,
+        updated_by,
+        updated_at,
+        acknowledged_at,
+        resolved_at,
+        created_at
+      ) VALUES (
+        @alertId,
+        @status,
+        @noteInsert,
+        @updatedBy,
+        @updatedAt,
+        @acknowledgedAt,
+        @resolvedAt,
+        @createdAt
+      )
+      ON CONFLICT(alert_id) DO UPDATE SET
+        status = excluded.status,
+        note = CASE
+          WHEN @noteUpdate IS NULL THEN alert_states.note
+          ELSE @noteUpdate
+        END,
+        updated_by = excluded.updated_by,
+        updated_at = excluded.updated_at,
+        acknowledged_at = excluded.acknowledged_at,
+        resolved_at = excluded.resolved_at`
+  );
+  const runMany = db.transaction((alertIds: string[]) => {
+    alertIds.forEach((alertId) => {
+      statement.run({
+        alertId,
+        status: params.status,
+        noteInsert,
+        noteUpdate,
+        updatedBy: params.userId,
+        updatedAt: now,
+        acknowledgedAt,
+        resolvedAt,
+        createdAt: now
+      });
+    });
+  });
+  runMany(params.alertIds);
+  return Array.from(getAlertStatesByIds(params.alertIds).values());
+}
+
+export function upsertAlertLogEntries(alerts: Alert[]) {
+  if (alerts.length === 0) {
+    return;
+  }
+  const now = new Date().toISOString();
+  const insert = db.prepare(
+    `INSERT INTO alert_log (
+        alert_id,
+        source,
+        source_label,
+        name,
+        severity,
+        message,
+        timestamp,
+        instance,
+        first_seen_at,
+        last_seen_at
+      ) VALUES (
+        @alertId,
+        @source,
+        @sourceLabel,
+        @name,
+        @severity,
+        @message,
+        @timestamp,
+        @instance,
+        @firstSeenAt,
+        @lastSeenAt
+      )
+      ON CONFLICT(alert_id) DO UPDATE SET
+        source = excluded.source,
+        source_label = excluded.source_label,
+        name = excluded.name,
+        severity = excluded.severity,
+        message = excluded.message,
+        instance = excluded.instance,
+        last_seen_at = excluded.last_seen_at`
+  );
+  const rows = alerts.map((alert) => ({
+    alertId: alert.id,
+    source: alert.source,
+    sourceLabel: alert.sourceLabel ?? "",
+    name: alert.name,
+    severity: alert.severity,
+    message: alert.message,
+    timestamp: alert.timestamp,
+    instance: alert.instance ?? "",
+    firstSeenAt: now,
+    lastSeenAt: now
+  }));
+  const insertMany = db.transaction((entries: typeof rows) => {
+    entries.forEach((entry) => insert.run(entry));
+  });
+  insertMany(rows);
+  pruneAlertLogBefore(new Date(Date.now() - alertLogRetentionMs).toISOString());
+}
+
+export function pruneAlertLogBefore(cutoff: string) {
+  db.prepare("DELETE FROM alert_log WHERE last_seen_at < ?").run(cutoff);
+}
+
+export function listAlertLogSince(cutoff: string): AlertLogRow[] {
+  const rows = db
+    .prepare(
+      `SELECT * FROM alert_log
+       WHERE last_seen_at >= ?
+       ORDER BY timestamp DESC`
+    )
+    .all(cutoff) as Array<any>;
+  return rows.map(toAlertLogRow);
+}
+
+export function countAlertLogSince(cutoff: string, query?: string): number {
+  const trimmed = (query ?? "").trim();
+  const like = `%${trimmed}%`;
+  if (!trimmed) {
+    const row = db
+      .prepare("SELECT COUNT(*) as count FROM alert_log WHERE last_seen_at >= ?")
+      .get(cutoff) as { count: number };
+    return row?.count ?? 0;
+  }
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) as count FROM alert_log
+       WHERE last_seen_at >= ?
+         AND (
+           timestamp LIKE ?
+           OR name LIKE ?
+           OR severity LIKE ?
+           OR source_label LIKE ?
+           OR source LIKE ?
+           OR instance LIKE ?
+         )`
+    )
+    .get(cutoff, like, like, like, like, like, like) as { count: number };
+  return row?.count ?? 0;
+}
+
+export function listAlertLogPageSince(params: {
+  cutoff: string;
+  query?: string;
+  limit: number;
+  offset: number;
+}): AlertLogRow[] {
+  const trimmed = (params.query ?? "").trim();
+  const like = `%${trimmed}%`;
+  const rows = trimmed
+    ? db
+        .prepare(
+          `SELECT * FROM alert_log
+           WHERE last_seen_at >= ?
+             AND (
+               timestamp LIKE ?
+               OR name LIKE ?
+               OR severity LIKE ?
+               OR source_label LIKE ?
+               OR source LIKE ?
+               OR instance LIKE ?
+             )
+           ORDER BY timestamp DESC
+           LIMIT ?
+           OFFSET ?`
+        )
+        .all(
+          params.cutoff,
+          like,
+          like,
+          like,
+          like,
+          like,
+          like,
+          params.limit,
+          params.offset
+        )
+    : db
+        .prepare(
+          `SELECT * FROM alert_log
+           WHERE last_seen_at >= ?
+           ORDER BY timestamp DESC
+           LIMIT ?
+           OFFSET ?`
+        )
+        .all(params.cutoff, params.limit, params.offset);
+  return (rows as Array<any>).map(toAlertLogRow);
+}
+
+export function getSourceHealth(
+  sourceType: DataSourceHealthRow["sourceType"],
+  sourceId: string
+): DataSourceHealthRow | null {
+  const row = db
+    .prepare(
+      "SELECT * FROM data_source_health WHERE source_id = ? AND source_type = ?"
+    )
+    .get(sourceId, sourceType) as any;
+  return row ? toDataSourceHealthRow(row) : null;
+}
+
+export function listSourceHealth(): DataSourceHealthRow[] {
+  const rows = db.prepare("SELECT * FROM data_source_health").all() as Array<any>;
+  return rows.map(toDataSourceHealthRow);
+}
+
+export function recordSourceSuccess(
+  sourceType: DataSourceHealthRow["sourceType"],
+  sourceId: string
+) {
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO data_source_health (
+        source_id,
+        source_type,
+        last_success_at,
+        last_error_at,
+        last_error_message,
+        fail_count,
+        next_retry_at
+      ) VALUES (
+        @sourceId,
+        @sourceType,
+        @lastSuccessAt,
+        NULL,
+        NULL,
+        0,
+        NULL
+      )
+      ON CONFLICT(source_id, source_type) DO UPDATE SET
+        last_success_at = excluded.last_success_at,
+        last_error_at = NULL,
+        last_error_message = NULL,
+        fail_count = 0,
+        next_retry_at = NULL`
+  ).run({
+    sourceId,
+    sourceType,
+    lastSuccessAt: now
+  });
+}
+
+export function recordSourceFailure(
+  sourceType: DataSourceHealthRow["sourceType"],
+  sourceId: string,
+  message: string
+) {
+  const now = new Date().toISOString();
+  const current = getSourceHealth(sourceType, sourceId);
+  const nextFailCount = (current?.failCount ?? 0) + 1;
+  const backoffMs = Math.min(10 * 60 * 1000, 10000 * 2 ** Math.max(0, nextFailCount - 1));
+  const nextRetryAt = new Date(Date.now() + backoffMs).toISOString();
+  db.prepare(
+    `INSERT INTO data_source_health (
+        source_id,
+        source_type,
+        last_success_at,
+        last_error_at,
+        last_error_message,
+        fail_count,
+        next_retry_at
+      ) VALUES (
+        @sourceId,
+        @sourceType,
+        @lastSuccessAt,
+        @lastErrorAt,
+        @lastErrorMessage,
+        @failCount,
+        @nextRetryAt
+      )
+      ON CONFLICT(source_id, source_type) DO UPDATE SET
+        last_error_at = excluded.last_error_at,
+        last_error_message = excluded.last_error_message,
+        fail_count = excluded.fail_count,
+        next_retry_at = excluded.next_retry_at`
+  ).run({
+    sourceId,
+    sourceType,
+    lastSuccessAt: current?.lastSuccessAt ?? null,
+    lastErrorAt: now,
+    lastErrorMessage: message,
+    failCount: nextFailCount,
+    nextRetryAt
+  });
+}
+
+export function listSavedViews(userId: string): SavedViewRow[] {
+  const rows = db
+    .prepare("SELECT * FROM saved_views WHERE user_id = ? ORDER BY updated_at DESC")
+    .all(userId) as Array<any>;
+  return rows.map(toSavedView);
+}
+
+export function createSavedView(
+  userId: string,
+  name: string,
+  filters: SavedViewFilters
+): SavedViewRow {
+  const now = new Date().toISOString();
+  const id = crypto.randomUUID();
+  db.prepare(
+    `INSERT INTO saved_views (id, user_id, name, filters_json, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)`
+  ).run(id, userId, name, JSON.stringify(filters), now, now);
+  const row = db.prepare("SELECT * FROM saved_views WHERE id = ?").get(id);
+  return toSavedView(row);
+}
+
+export function deleteSavedView(userId: string, id: string) {
+  db.prepare("DELETE FROM saved_views WHERE id = ? AND user_id = ?").run(id, userId);
+}
+
+export function logAudit(action: string, userId: string | null, details: Record<string, unknown>) {
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO audit_log (id, user_id, action, details, created_at)
+     VALUES (?, ?, ?, ?, ?)`
+  ).run(crypto.randomUUID(), userId, action, JSON.stringify(details ?? {}), now);
+}
+
+export function listAuditLogs(limit = 100, offset = 0): Array<
+  AuditLogEntry & { userName: string | null; userEmail: string | null }
+> {
+  const rows = db
+    .prepare(
+      `SELECT audit_log.*, users.first_name, users.last_name, users.email
+       FROM audit_log
+       LEFT JOIN users ON users.id = audit_log.user_id
+       ORDER BY created_at DESC
+       LIMIT ? OFFSET ?`
+    )
+    .all(limit, offset) as Array<any>;
+  return rows.map((row) => ({
+    id: row.id,
+    userId: row.user_id ?? null,
+    action: row.action,
+    details: row.details,
+    createdAt: row.created_at,
+    userName: row.first_name || row.last_name ? `${row.first_name ?? ""} ${row.last_name ?? ""}`.trim() : null,
+    userEmail: row.email ?? null
+  }));
+}
+
+export function countAuditLogs() {
+  const row = db.prepare("SELECT COUNT(*) as total FROM audit_log").get() as {
+    total: number;
+  };
+  return row?.total ?? 0;
 }
 
 export function createSession(userId: string, ttlHours = 24 * 7) {

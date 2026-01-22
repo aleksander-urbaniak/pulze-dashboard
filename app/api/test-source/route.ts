@@ -13,21 +13,36 @@ export const runtime = "nodejs";
 
 type TestPayload = {
   type: "Prometheus" | "Zabbix" | "Kuma";
-  id: string;
+  id?: string;
+  source?: Partial<PrometheusSource | ZabbixSource | KumaSource>;
 };
 
-function requireSource<T extends { id: string }>(list: T[], id: string) {
+function requireSource<T extends { id: string }>(list: T[], id?: string) {
+  if (!id) {
+    return null;
+  }
   return list.find((item) => item.id === id) ?? null;
 }
 
+function resolveSource<T extends { id?: string }>(
+  payloadSource: Partial<T> | undefined,
+  list: T[],
+  id?: string
+) {
+  if (payloadSource) {
+    return payloadSource;
+  }
+  return requireSource(list as Array<T & { id: string }>, id);
+}
+
 export async function POST(request: Request) {
-  const user = getSessionUser();
+  const user = await getSessionUser();
   if (!user || user.role !== "admin") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const payload = (await request.json()) as Partial<TestPayload>;
-  if (!payload?.type || !payload?.id) {
+  if (!payload?.type) {
     return NextResponse.json({ error: "Missing source parameters" }, { status: 400 });
   }
 
@@ -35,11 +50,22 @@ export async function POST(request: Request) {
 
   try {
     if (payload.type === "Prometheus") {
-      const source = requireSource(settings.prometheusSources, payload.id);
+      const source = resolveSource<PrometheusSource>(
+        payload.source as Partial<PrometheusSource> | undefined,
+        settings.prometheusSources,
+        payload.id
+      );
       if (!source || !source.url) {
-        return NextResponse.json({ error: "Prometheus source not found" }, { status: 404 });
+        return NextResponse.json({ error: "Prometheus URL required" }, { status: 400 });
       }
-      const sampleLine = await fetchPrometheusTestLine(source as PrometheusSource);
+      const normalized: PrometheusSource = {
+        id: source.id ?? payload.id ?? "draft",
+        name: source.name ?? "",
+        url: source.url ?? "",
+        authType: source.authType ?? "none",
+        authValue: source.authValue ?? ""
+      };
+      const sampleLine = await fetchPrometheusTestLine(normalized);
       return NextResponse.json({
         ok: true,
         message: sampleLine ? "Sample alert fetched." : "Connected. No active alerts.",
@@ -48,11 +74,21 @@ export async function POST(request: Request) {
     }
 
     if (payload.type === "Zabbix") {
-      const source = requireSource(settings.zabbixSources, payload.id);
+      const source = resolveSource<ZabbixSource>(
+        payload.source as Partial<ZabbixSource> | undefined,
+        settings.zabbixSources,
+        payload.id
+      );
       if (!source || !source.url) {
-        return NextResponse.json({ error: "Zabbix source not found" }, { status: 404 });
+        return NextResponse.json({ error: "Zabbix URL required" }, { status: 400 });
       }
-      const sampleLine = await fetchZabbixTestLine(source as ZabbixSource);
+      const normalized: ZabbixSource = {
+        id: source.id ?? payload.id ?? "draft",
+        name: source.name ?? "",
+        url: source.url ?? "",
+        token: source.token ?? ""
+      };
+      const sampleLine = await fetchZabbixTestLine(normalized);
       return NextResponse.json({
         ok: true,
         message: sampleLine ? "Sample alert fetched." : "Connected. No active alerts.",
@@ -60,14 +96,26 @@ export async function POST(request: Request) {
       });
     }
 
-    const source = requireSource(settings.kumaSources, payload.id) as KumaSource | null;
+    const source = resolveSource<KumaSource>(
+      payload.source as Partial<KumaSource> | undefined,
+      settings.kumaSources,
+      payload.id
+    );
     if (!source || !source.baseUrl) {
-      return NextResponse.json({ error: "Kuma source not found" }, { status: 404 });
+      return NextResponse.json({ error: "Kuma base URL required" }, { status: 400 });
     }
-    if (source.mode === "status" && !source.slug) {
+    const normalized: KumaSource = {
+      id: source.id ?? payload.id ?? "draft",
+      name: source.name ?? "",
+      baseUrl: source.baseUrl ?? "",
+      mode: source.mode ?? "status",
+      slug: source.slug ?? "",
+      key: source.key ?? ""
+    };
+    if (normalized.mode === "status" && !normalized.slug) {
       return NextResponse.json({ error: "Status page slug required." }, { status: 400 });
     }
-    const sampleLine = await fetchKumaTestLine(source);
+    const sampleLine = await fetchKumaTestLine(normalized);
     return NextResponse.json({
       ok: true,
       message: sampleLine ? "Sample alert fetched." : "Connected. No active alerts.",
@@ -80,3 +128,4 @@ export async function POST(request: Request) {
     );
   }
 }
+

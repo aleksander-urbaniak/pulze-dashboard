@@ -2,12 +2,12 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 
 import { getSessionUser } from "../../../../lib/auth";
-import { getUserByUsername, updateUser } from "../../../../lib/db";
+import { getUserByUsername, logAudit, updateUser } from "../../../../lib/db";
 
 export const runtime = "nodejs";
 
 export async function PATCH(request: Request) {
-  const user = getSessionUser();
+  const user = await getSessionUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -38,6 +38,11 @@ export async function PATCH(request: Request) {
     passwordHash
   });
 
+  logAudit("profile.update", user.id, {
+    userId: user.id,
+    fields: Object.keys(payload).filter((key) => key !== "password")
+  });
+
   return NextResponse.json({
     user: {
       id: updated.id,
@@ -50,3 +55,4 @@ export async function PATCH(request: Request) {
     }
   });
 }
+

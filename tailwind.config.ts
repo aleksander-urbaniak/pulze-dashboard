@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import defaultTheme from "tailwindcss/defaultTheme";
 
 const config: Config = {
   content: [
@@ -6,6 +7,14 @@ const config: Config = {
     "./components/**/*.{js,ts,jsx,tsx,mdx}"
   ],
   theme: {
+    ...defaultTheme,
+    screens: {
+      sm: "640px",
+      md: "768px",
+      lg: "1024px",
+      xl: "1280px",
+      "2xl": "1536px"
+    },
     extend: {
       colors: {
         surface: "rgb(var(--surface) / <alpha-value>)",

@@ -1,25 +1,30 @@
+@config "../tailwind.config.ts";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --base: 248 244 244;
+  --base: 246 244 240;
   --surface: 255 255 255;
-  --text: 28 24 24;
-  --muted: 120 108 108;
-  --accent: 235 99 99;
-  --accent-soft: 255 225 225;
-  --border: 236 226 226;
+  --text: 20 24 30;
+  --muted: 96 104 116;
+  --accent: 24 134 111;
+  --accent-soft: 214 238 232;
+  --border: 226 230 233;
+  --bg-gradient: 0.9;
+  --bg-glow: 0.35;
+  --bg-noise: 0.08;
+  --brand-logo-url: none;
 }
 
 .dark {
-  --base: 8 14 30;
-  --surface: 18 26 48;
-  --text: 232 238 252;
-  --muted: 156 170 196;
-  --accent: 236 96 96;
-  --accent-soft: 62 36 48;
-  --border: 42 56 86;
+  --base: 8 12 22;
+  --surface: 15 22 35;
+  --text: 228 233 242;
+  --muted: 148 160 180;
+  --accent: 56 193 166;
+  --accent-soft: 30 56 58;
+  --border: 39 53 73;
 }
 
 * {
@@ -34,12 +39,97 @@ body {
 body {
   margin: 0;
   font-family: var(--font-body), "Segoe UI", sans-serif;
-  background: linear-gradient(140deg, rgba(248, 246, 246, 0.98), rgba(240, 238, 238, 0.94));
+  -webkit-tap-highlight-color: transparent;
+  background-color: rgb(var(--base));
+  background-image:
+    radial-gradient(
+      circle at 50% 40%,
+      rgb(var(--base) / 0) 0%,
+      rgb(var(--base) / 0.25) 45%,
+      rgb(var(--base) / 0.7) 78%,
+      rgb(var(--base)) 100%
+    ),
+    radial-gradient(circle at 20% 20%, rgb(var(--accent) / var(--bg-glow)), transparent 55%),
+    radial-gradient(circle at 80% 0%, rgb(var(--accent) / calc(var(--bg-glow) * 0.7)), transparent 45%),
+    linear-gradient(
+      145deg,
+      rgb(var(--base) / var(--bg-gradient)),
+      rgb(var(--surface) / calc(var(--bg-gradient) * 0.96))
+    );
+  background-repeat: no-repeat;
+  background-size: 240% 240%;
+  background-position: 50% 40%;
   color: rgb(var(--text));
+  position: relative;
+  isolation: isolate;
 }
 
 .dark body {
-  background: linear-gradient(165deg, rgba(8, 14, 30, 0.98), rgba(12, 20, 40, 0.94));
+  background-color: rgb(var(--base));
+  background-image:
+    radial-gradient(
+      circle at 50% 40%,
+      rgb(var(--base) / 0) 0%,
+      rgb(var(--base) / 0.25) 45%,
+      rgb(var(--base) / 0.7) 78%,
+      rgb(var(--base)) 100%
+    ),
+    radial-gradient(circle at 10% 10%, rgb(var(--accent) / calc(var(--bg-glow) * 1.2)), transparent 55%),
+    radial-gradient(circle at 85% 5%, rgb(var(--accent) / calc(var(--bg-glow) * 0.9)), transparent 50%),
+    linear-gradient(
+      165deg,
+      rgb(var(--base) / var(--bg-gradient)),
+      rgb(var(--surface) / calc(var(--bg-gradient) * 0.96))
+    );
+  background-repeat: no-repeat;
+  background-size: 240% 240%;
+  background-position: 50% 40%;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: var(--bg-noise);
+  mix-blend-mode: soft-light;
+  background-image:
+    repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.03),
+      rgba(0, 0, 0, 0.03) 1px,
+      transparent 1px,
+      transparent 2px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.025),
+      rgba(255, 255, 255, 0.025) 1px,
+      transparent 1px,
+      transparent 2px
+    );
+  z-index: 1;
+}
+
+body > * {
+  position: relative;
+  z-index: 2;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: -20%;
+  pointer-events: none;
+  background-image: radial-gradient(
+    circle at 50% 35%,
+    rgb(var(--base) / 0) 0%,
+    rgb(var(--base) / 0.2) 50%,
+    rgb(var(--base) / 0.6) 80%,
+    rgb(var(--base)) 100%
+  );
+  opacity: 0.9;
+  z-index: 0;
 }
 
 .theme-icon {
@@ -56,6 +146,47 @@ body {
   opacity: 0.9;
 }
 
+.brand-logo {
+  position: relative;
+  overflow: hidden;
+}
+
+.brand-logo__image {
+  position: absolute;
+  inset: 0;
+  background-image: var(--brand-logo-url);
+  background-position: center;
+  background-size: cover;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.brand-logo__fallback {
+  position: relative;
+  z-index: 1;
+  opacity: 1;
+  transition: opacity 0.2s ease;
+}
+
+:root.theme-transition,
+:root.theme-transition * {
+  transition:
+    background-color 0.6s ease,
+    color 0.6s ease,
+    border-color 0.6s ease,
+    box-shadow 0.6s ease,
+    fill 0.6s ease,
+    stroke 0.6s ease;
+}
+
+:root[data-brand-logo="true"] .brand-logo__image {
+  opacity: 0.9;
+}
+
+:root[data-brand-logo="true"] .brand-logo__fallback {
+  opacity: 1;
+}
+
 h1,
 h2,
 h3,
@@ -64,5 +195,178 @@ h4 {
 }
 
 ::selection {
-  background: rgba(235, 99, 99, 0.3);
+  background: rgba(24, 134, 111, 0.25);
+}
+
+@layer base {
+  button,
+  [role="button"] {
+    cursor: pointer;
+    appearance: none;
+    background-color: transparent;
+    border: none;
+    color: inherit;
+    font: inherit;
+    transition:
+      transform 160ms ease,
+      background-color 200ms ease,
+      border-color 200ms ease,
+      color 200ms ease,
+      box-shadow 200ms ease,
+      filter 200ms ease;
+    will-change: transform;
+  }
+
+  button:not(:disabled):hover,
+  [role="button"]:not([aria-disabled="true"]):hover {
+    transform: translateY(-1px);
+    filter: brightness(1.18);
+  }
+
+  button:not(:disabled):active,
+  [role="button"]:not([aria-disabled="true"]):active {
+    transform: translateY(0) scale(0.98);
+  }
+
+  button:disabled,
+  [role="button"][aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+
+  .nav-link {
+    transition:
+      transform 160ms ease,
+      background-color 200ms ease,
+      border-color 200ms ease,
+      color 200ms ease,
+      filter 200ms ease;
+    will-change: transform;
+  }
+
+  .nav-link:hover {
+    filter: brightness(1.18);
+  }
+
+  .nav-link:active {
+    transform: scale(0.98);
+  }
+
+  a {
+    -webkit-tap-highlight-color: transparent;
+    text-decoration: none;
+  }
+
+  a:focus,
+  a:focus-visible,
+  a:active {
+    outline: none;
+    box-shadow: none;
+  }
+
+  .nav-static button,
+  .nav-static .nav-link {
+    transform: none;
+  }
+
+  .nav-static button:not(:disabled):hover,
+  .nav-static button:not(:disabled):active,
+  .nav-static .nav-link:hover,
+  .nav-static .nav-link:active {
+    transform: none;
+  }
+
+  .dropdown-option,
+  .dropdown-option:hover,
+  .dropdown-option:active {
+    transform: none;
+    filter: none;
+  }
+
+  select {
+    transition:
+      transform 160ms ease-in-out,
+      border-color 200ms ease-in-out,
+      box-shadow 200ms ease-in-out;
+    color: rgb(var(--text));
+  }
+
+  select option,
+  select optgroup {
+    background-color: rgb(var(--surface));
+    color: rgb(var(--text));
+  }
+
+  select option:checked,
+  select option:focus,
+  select option:active {
+    background-color: rgb(var(--accent));
+    color: #fff;
+  }
+
+  select:focus,
+  select:focus-visible {
+    border-color: rgb(var(--accent) / 0.6);
+    box-shadow: 0 0 0 2px rgb(var(--accent) / 0.18);
+    outline: none;
+  }
+
+  select:not(:disabled):active {
+    transform: scale(0.99);
+  }
+
+  input[type="range"] {
+    appearance: none;
+    background: transparent;
+    height: 6px;
+    accent-color: rgb(var(--accent));
+    border-radius: 9999px;
+  }
+
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 6px;
+    border-radius: 9999px;
+    background-image: linear-gradient(
+      to right,
+      rgb(var(--accent)) 0%,
+      rgb(var(--accent)) var(--range-percent, 0%),
+      rgb(var(--border)) var(--range-percent, 0%),
+      rgb(var(--border)) 100%
+    );
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    height: 16px;
+    width: 16px;
+    border-radius: 9999px;
+    background: rgb(var(--accent));
+    border: 2px solid rgb(var(--surface));
+    margin-top: -5px;
+  }
+
+  input[type="range"]::-moz-range-track {
+    height: 6px;
+    border-radius: 9999px;
+    background: rgb(var(--border));
+  }
+
+  input[type="range"]::-moz-range-progress {
+    height: 6px;
+    border-radius: 9999px;
+    background: rgb(var(--accent));
+  }
+
+  input[type="range"]::-moz-range-thumb {
+    height: 16px;
+    width: 16px;
+    border-radius: 9999px;
+    background: rgb(var(--accent));
+    border: 2px solid rgb(var(--surface));
+  }
+}
+
+@layer utilities {
+  select.rounded-xl {
+    border-radius: 1rem;
+  }
 }

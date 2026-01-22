@@ -1,7 +1,15 @@
 import { NextResponse } from "next/server";
+import bcrypt from "bcryptjs";
 
 import { getSessionUser } from "../../../lib/auth";
-import { createUser, getUserById, getUserByUsername, listUsers, updateUser } from "../../../lib/db";
+import {
+  createUser,
+  getUserById,
+  getUserByUsername,
+  listUsers,
+  logAudit,
+  updateUser
+} from "../../../lib/db";
 
 export const runtime = "nodejs";
 
@@ -21,7 +29,7 @@ function toPublicUser(user: ReturnType<typeof getUserById>) {
 }
 
 export async function GET() {
-  const user = getSessionUser();
+  const user = await getSessionUser();
   if (!user || user.role !== "admin") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -30,7 +38,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const user = getSessionUser();
+  const user = await getSessionUser();
   if (!user || user.role !== "admin") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -59,11 +67,17 @@ export async function POST(request: Request) {
     role: payload.role
   });
 
+  logAudit("users.create", user.id, {
+    userId: created.id,
+    username: created.username,
+    role: created.role
+  });
+
   return NextResponse.json({ user: toPublicUser(created) });
 }
 
 export async function PATCH(request: Request) {
-  const user = getSessionUser();
+  const user = await getSessionUser();
   if (!user || user.role !== "admin") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -75,6 +89,7 @@ export async function PATCH(request: Request) {
     lastName?: string;
     email?: string;
     avatarUrl?: string;
+    password?: string;
     role?: "viewer" | "admin";
   };
 
@@ -89,14 +104,25 @@ export async function PATCH(request: Request) {
     }
   }
 
+  const password = payload.password?.trim();
+  const passwordHash = password ? bcrypt.hashSync(password, 10) : undefined;
   const updated = updateUser(payload.id, {
     username: payload.username?.trim(),
     firstName: payload.firstName?.trim(),
     lastName: payload.lastName?.trim(),
     email: payload.email?.trim(),
     avatarUrl: payload.avatarUrl?.trim(),
+    passwordHash,
     role: payload.role
+  });
+
+  logAudit("users.update", user.id, {
+    userId: updated.id,
+    username: updated.username,
+    role: updated.role,
+    passwordChanged: Boolean(passwordHash)
   });
 
   return NextResponse.json({ user: toPublicUser(updated) });
 }
+
