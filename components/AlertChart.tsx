@@ -11,7 +11,11 @@ const CHART_HEIGHT = 240;
 const PADDING_X = 32;
 const PADDING_Y = 28;
 
-function buildSmoothPath(points: Point[]) {
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function buildSmoothPath(points: Point[], minY: number, maxY: number) {
   if (points.length === 0) {
     return "";
   }
@@ -26,9 +30,9 @@ function buildSmoothPath(points: Point[]) {
     const p2 = points[i + 1];
     const p3 = points[i + 2] ?? p2;
     const cp1x = p1.x + (p2.x - p0.x) / 6;
-    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp1y = clamp(p1.y + (p2.y - p0.y) / 6, minY, maxY);
     const cp2x = p2.x - (p3.x - p1.x) / 6;
-    const cp2y = p2.y - (p3.y - p1.y) / 6;
+    const cp2y = clamp(p2.y - (p3.y - p1.y) / 6, minY, maxY);
     d.push(`C ${cp1x} ${cp1y} ${cp2x} ${cp2y} ${p2.x} ${p2.y}`);
   }
   return d.join(" ");
@@ -51,7 +55,7 @@ export default function AlertChart({ data }: { data: TrendDatum[] }) {
       return { x, y };
     });
 
-    const path = buildSmoothPath(pts);
+    const path = buildSmoothPath(pts, PADDING_Y, baselineY);
     const area =
       pts.length > 0
         ? `${path} L ${pts[pts.length - 1].x} ${baselineY} L ${pts[0].x} ${baselineY} Z`

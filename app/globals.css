@@ -1,3 +1,4 @@
+@config "../tailwind.config.ts";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -163,6 +164,7 @@ body::after {
 .brand-logo__fallback {
   position: relative;
   z-index: 1;
+  opacity: 1;
   transition: opacity 0.2s ease;
 }
 
@@ -178,11 +180,11 @@ body::after {
 }
 
 :root[data-brand-logo="true"] .brand-logo__image {
-  opacity: 1;
+  opacity: 0.9;
 }
 
 :root[data-brand-logo="true"] .brand-logo__fallback {
-  opacity: 0;
+  opacity: 1;
 }
 
 h1,
@@ -200,6 +202,11 @@ h4 {
   button,
   [role="button"] {
     cursor: pointer;
+    appearance: none;
+    background-color: transparent;
+    border: none;
+    color: inherit;
+    font: inherit;
     transition:
       transform 160ms ease,
       background-color 200ms ease,
@@ -242,6 +249,18 @@ h4 {
 
   .nav-link:active {
     transform: scale(0.98);
+  }
+
+  a {
+    -webkit-tap-highlight-color: transparent;
+    text-decoration: none;
+  }
+
+  a:focus,
+  a:focus-visible,
+  a:active {
+    outline: none;
+    box-shadow: none;
   }
 
   .nav-static button,
@@ -293,6 +312,56 @@ h4 {
 
   select:not(:disabled):active {
     transform: scale(0.99);
+  }
+
+  input[type="range"] {
+    appearance: none;
+    background: transparent;
+    height: 6px;
+    accent-color: rgb(var(--accent));
+    border-radius: 9999px;
+  }
+
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 6px;
+    border-radius: 9999px;
+    background-image: linear-gradient(
+      to right,
+      rgb(var(--accent)) 0%,
+      rgb(var(--accent)) var(--range-percent, 0%),
+      rgb(var(--border)) var(--range-percent, 0%),
+      rgb(var(--border)) 100%
+    );
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    height: 16px;
+    width: 16px;
+    border-radius: 9999px;
+    background: rgb(var(--accent));
+    border: 2px solid rgb(var(--surface));
+    margin-top: -5px;
+  }
+
+  input[type="range"]::-moz-range-track {
+    height: 6px;
+    border-radius: 9999px;
+    background: rgb(var(--border));
+  }
+
+  input[type="range"]::-moz-range-progress {
+    height: 6px;
+    border-radius: 9999px;
+    background: rgb(var(--accent));
+  }
+
+  input[type="range"]::-moz-range-thumb {
+    height: 16px;
+    width: 16px;
+    border-radius: 9999px;
+    background: rgb(var(--accent));
+    border: 2px solid rgb(var(--surface));
   }
 }
 

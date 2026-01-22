@@ -1,4 +1,4 @@
-import type { Alert } from "./types";
+import type { Alert, AlertSource } from "./types";
 
 export type TrendRange = "1d" | "7d" | "14d" | "month" | "year";
 
@@ -8,11 +8,11 @@ export type TrendDatum = {
   value: number;
 };
 
-export const teamConfigs = [
+export const teamConfigs: Array<{ id: string; name: string; sources: AlertSource[] }> = [
   { id: "infra", name: "Core Infra", sources: ["Prometheus"] },
   { id: "platform", name: "Platform Ops", sources: ["Zabbix"] },
   { id: "apps", name: "App Health", sources: ["Kuma"] }
-] as const;
+];
 
 export type AnalyticsSummary = {
   counts: {

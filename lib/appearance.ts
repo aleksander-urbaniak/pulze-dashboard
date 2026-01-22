@@ -24,9 +24,9 @@ export const defaultAppearance: AppearanceSettings = {
     faviconUrl: ""
   },
   background: {
-    gradient: 90,
-    glow: 35,
-    noise: 8
+    gradient: 100,
+    glow: 0,
+    noise: 100
   }
 };
 

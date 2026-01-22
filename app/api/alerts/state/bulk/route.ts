@@ -6,7 +6,7 @@ import { logAudit, upsertAlertStatesBulk } from "../../../../../lib/db";
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  const user = getSessionUser();
+  const user = await getSessionUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -39,3 +39,4 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ states });
 }
+

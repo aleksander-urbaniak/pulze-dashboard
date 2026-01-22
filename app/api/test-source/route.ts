@@ -36,7 +36,7 @@ function resolveSource<T extends { id?: string }>(
 }
 
 export async function POST(request: Request) {
-  const user = getSessionUser();
+  const user = await getSessionUser();
   if (!user || user.role !== "admin") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -128,3 +128,4 @@ export async function POST(request: Request) {
     );
   }
 }
+

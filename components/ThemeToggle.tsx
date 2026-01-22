@@ -48,6 +48,7 @@ export default function ThemeToggle() {
             height="18"
             viewBox="0 0 24 24"
             fill="none"
+            suppressHydrationWarning
           >
             <path
               d="M21 14.5C19.7 15.2 18.2 15.6 16.6 15.6C12.1 15.6 8.4 11.9 8.4 7.4C8.4 5.8 8.8 4.3 9.5 3C6.1 4.1 3.6 7.2 3.6 10.9C3.6 15.6 7.4 19.4 12.1 19.4C15.8 19.4 18.9 16.9 21 14.5Z"
@@ -64,6 +65,7 @@ export default function ThemeToggle() {
             height="18"
             viewBox="0 0 24 24"
             fill="none"
+            suppressHydrationWarning
           >
             <circle cx="12" cy="12" r="4.5" stroke="currentColor" strokeWidth="1.6" />
             <path

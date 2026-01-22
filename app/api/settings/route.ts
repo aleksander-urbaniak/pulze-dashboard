@@ -17,7 +17,7 @@ import { defaultAppearance } from "../../../lib/appearance";
 export const runtime = "nodejs";
 
 export async function GET() {
-  const user = getSessionUser();
+  const user = await getSessionUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -46,7 +46,7 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
-  const user = getSessionUser();
+  const user = await getSessionUser();
   if (!user || user.role !== "admin") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -118,13 +118,17 @@ export async function PUT(request: Request) {
   const prometheusSources = (Array.isArray(payload.prometheusSources)
     ? payload.prometheusSources
     : current.prometheusSources
-  ).map((source) => ({
-    id: source.id ?? crypto.randomUUID(),
-    name: source.name?.trim() ?? "",
-    url: source.url?.trim() ?? "",
-    authType: source.authType === "basic" || source.authType === "bearer" ? source.authType : "none",
-    authValue: source.authValue?.trim() ?? ""
-  }));
+  ).map((source) => {
+    const authType: PrometheusSource["authType"] =
+      source.authType === "basic" || source.authType === "bearer" ? source.authType : "none";
+    return {
+      id: source.id ?? crypto.randomUUID(),
+      name: source.name?.trim() ?? "",
+      url: source.url?.trim() ?? "",
+      authType,
+      authValue: source.authValue?.trim() ?? ""
+    };
+  });
 
   const zabbixSources = (Array.isArray(payload.zabbixSources)
     ? payload.zabbixSources
@@ -139,14 +143,17 @@ export async function PUT(request: Request) {
   const kumaSources = (Array.isArray(payload.kumaSources)
     ? payload.kumaSources
     : current.kumaSources
-  ).map((source) => ({
-    id: source.id ?? crypto.randomUUID(),
-    name: source.name?.trim() ?? "",
-    baseUrl: source.baseUrl?.trim() ?? "",
-    mode: source.mode === "apiKey" ? "apiKey" : "status",
-    slug: source.slug?.trim() ?? "",
-    key: source.key?.trim() ?? ""
-  }));
+  ).map((source) => {
+    const mode: KumaSource["mode"] = source.mode === "apiKey" ? "apiKey" : "status";
+    return {
+      id: source.id ?? crypto.randomUUID(),
+      name: source.name?.trim() ?? "",
+      baseUrl: source.baseUrl?.trim() ?? "",
+      mode,
+      slug: source.slug?.trim() ?? "",
+      key: source.key?.trim() ?? ""
+    };
+  });
 
   const refreshIntervalValue =
     payload.refreshInterval === undefined ? current.refreshInterval : payload.refreshInterval;
@@ -199,3 +206,4 @@ export async function PUT(request: Request) {
 
   return NextResponse.json({ settings: next, canEdit: true });
 }
+

@@ -1081,7 +1081,7 @@ export function logAudit(action: string, userId: string | null, details: Record<
   ).run(crypto.randomUUID(), userId, action, JSON.stringify(details ?? {}), now);
 }
 
-export function listAuditLogs(limit = 100): Array<
+export function listAuditLogs(limit = 100, offset = 0): Array<
   AuditLogEntry & { userName: string | null; userEmail: string | null }
 > {
   const rows = db
@@ -1090,9 +1090,9 @@ export function listAuditLogs(limit = 100): Array<
        FROM audit_log
        LEFT JOIN users ON users.id = audit_log.user_id
        ORDER BY created_at DESC
-       LIMIT ?`
+       LIMIT ? OFFSET ?`
     )
-    .all(limit) as Array<any>;
+    .all(limit, offset) as Array<any>;
   return rows.map((row) => ({
     id: row.id,
     userId: row.user_id ?? null,
@@ -1102,6 +1102,13 @@ export function listAuditLogs(limit = 100): Array<
     userName: row.first_name || row.last_name ? `${row.first_name ?? ""} ${row.last_name ?? ""}`.trim() : null,
     userEmail: row.email ?? null
   }));
+}
+
+export function countAuditLogs() {
+  const row = db.prepare("SELECT COUNT(*) as total FROM audit_log").get() as {
+    total: number;
+  };
+  return row?.total ?? 0;
 }
 
 export function createSession(userId: string, ttlHours = 24 * 7) {

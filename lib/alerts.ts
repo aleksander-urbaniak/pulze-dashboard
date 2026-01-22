@@ -555,11 +555,12 @@ export async function fetchKumaTestLine(source: KumaSource): Promise<string | nu
 
 async function fetchKumaMetricsDown(source: KumaSource) {
   const metricsUrl = appendPath(source.baseUrl, "/metrics");
-  const headers = source.key
-    ? { Authorization: `Basic ${Buffer.from(`:${source.key}`).toString("base64")}` }
-    : {};
+  const headers: Record<string, string> = { Accept: "text/plain" };
+  if (source.key) {
+    headers.Authorization = `Basic ${Buffer.from(`:${source.key}`).toString("base64")}`;
+  }
   const response = await fetch(metricsUrl, {
-    headers: { Accept: "text/plain", ...headers },
+    headers,
     cache: "no-store"
   });
   if (!response.ok) {

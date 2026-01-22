@@ -7,7 +7,7 @@ import { getUserByUsername, logAudit, updateUser } from "../../../../lib/db";
 export const runtime = "nodejs";
 
 export async function PATCH(request: Request) {
-  const user = getSessionUser();
+  const user = await getSessionUser();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -55,3 +55,4 @@ export async function PATCH(request: Request) {
     }
   });
 }
+

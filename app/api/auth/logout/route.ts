@@ -6,8 +6,8 @@ import { deleteSession, logAudit } from "../../../../lib/db";
 export const runtime = "nodejs";
 
 export async function POST() {
-  const token = getSessionToken();
-  const user = getSessionUser();
+  const token = await getSessionToken();
+  const user = await getSessionUser();
   if (user) {
     logAudit("auth.logout", user.id, { username: user.username });
   }
@@ -23,3 +23,4 @@ export async function POST() {
   });
   return response;
 }
+
