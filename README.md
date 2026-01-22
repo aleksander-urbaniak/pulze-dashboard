@@ -1,4 +1,4 @@
-
+*NOTE: This application is still partly under development. You may encounter bugs or errors. If so please create an issue.*
 
 # PulZe Monitoring Dashboard
 
