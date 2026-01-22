@@ -81,7 +81,7 @@ The SQLite database lives at `data/pulze.db`. It is created automatically on fir
 
 ## Environment
 
-No environment variables are required by default. If you want to document or add overrides, use `.env.example` as a template and load values via Docker (`--env-file`) or your shell.
+No environment variables are required by default.
 
 ## Troubleshooting
 
