@@ -1,5 +1,6 @@
 services:
   pulze-dashboard:
+    image: pulze-dashboard:v1.0.0
     build: .
     ports:
       - "3000:3000"
