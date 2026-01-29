@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 
+export const dynamic = "force-dynamic"
+
 import { getSessionUser } from "../../../../lib/auth";
 import { getUserByUsername, logAudit, updateUser } from "../../../../lib/db";
 
@@ -55,4 +57,5 @@ export async function PATCH(request: Request) {
     }
   });
 }
+
 

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+export const dynamic = "force-dynamic"
+
 import { getSessionUser } from "../../../lib/auth";
 import { getSettings } from "../../../lib/db";
 import {
@@ -128,4 +130,5 @@ export async function POST(request: Request) {
     );
   }
 }
+
 

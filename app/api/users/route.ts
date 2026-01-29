@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 
+export const dynamic = "force-dynamic"
+
 import { getSessionUser } from "../../../lib/auth";
 import {
   createUser,
@@ -125,4 +127,5 @@ export async function PATCH(request: Request) {
 
   return NextResponse.json({ user: toPublicUser(updated) });
 }
+
 

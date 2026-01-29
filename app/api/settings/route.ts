@@ -1,6 +1,8 @@
 import crypto from "crypto";
 import { NextResponse } from "next/server";
 
+export const dynamic = "force-dynamic"
+
 import { getSessionUser } from "../../../lib/auth";
 import { getSettings, logAudit, updateSettings } from "../../../lib/db";
 import type {
@@ -206,4 +208,5 @@ export async function PUT(request: Request) {
 
   return NextResponse.json({ settings: next, canEdit: true });
 }
+
 

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+export const dynamic = "force-dynamic"
+
 import { fetchKumaAlerts, fetchPrometheusAlerts, fetchZabbixAlerts } from "../../../../lib/alerts";
 import { buildAnalyticsSummary } from "../../../../lib/analytics";
 import { getSettings } from "../../../../lib/db";
@@ -51,4 +53,5 @@ export async function GET() {
     { headers: { "Cache-Control": "no-store" } }
   );
 }
+
 

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+export const dynamic = "force-dynamic"
+
 import { getSessionUser } from "../../../../lib/auth";
 import { logAudit, upsertAlertState } from "../../../../lib/db";
 
@@ -47,4 +49,5 @@ export async function POST(request: Request) {
     }
   });
 }
+
 

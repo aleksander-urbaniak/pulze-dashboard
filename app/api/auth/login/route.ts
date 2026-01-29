@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 
+export const dynamic = "force-dynamic"
+
 import { createSession, getUserByUsername, logAudit } from "../../../../lib/db";
 
 export const runtime = "nodejs";
@@ -41,4 +43,5 @@ export async function POST(request: Request) {
 
   return response;
 }
+
 

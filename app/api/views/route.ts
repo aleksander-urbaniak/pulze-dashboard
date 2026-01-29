@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+export const dynamic = "force-dynamic"
+
 import { getSessionUser } from "../../../lib/auth";
 import { createSavedView, deleteSavedView, listSavedViews, logAudit } from "../../../lib/db";
 import type { SavedViewFilters } from "../../../lib/types";
@@ -50,4 +52,5 @@ export async function DELETE(request: Request) {
   logAudit("views.delete", user.id, { viewId: payload.id });
   return NextResponse.json({ ok: true });
 }
+
 

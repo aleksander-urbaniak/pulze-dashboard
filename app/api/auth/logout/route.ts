@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+export const dynamic = "force-dynamic"
+
 import { getSessionToken, getSessionUser } from "../../../../lib/auth";
 import { deleteSession, logAudit } from "../../../../lib/db";
 
@@ -23,4 +25,5 @@ export async function POST() {
   });
   return response;
 }
+
 
