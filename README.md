@@ -4,7 +4,7 @@
 
 # PulZe Dashboard
 
-PulZe is an easy-to-use self-hosted monitoring dashboard that aggregates alerts from Prometheus/Alertmanager, Zabbix, and Uptime Kuma in one place.
+PulZe is a self-hosted monitoring dashboard that aggregates alerts from Prometheus/Alertmanager, Zabbix, and Uptime Kuma in one place.
 
 <img src="https://img.shields.io/badge/Next.js-16-black?logo=next.js&logoColor=white" />
 <img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black" />
@@ -15,70 +15,51 @@ PulZe is an easy-to-use self-hosted monitoring dashboard that aggregates alerts 
 
 <img src="./public/images/dashboard.png" width="900" alt="PulZe Dashboard Screenshot" />
 
-## ⭐ Features
+## Features
 
-- Unified alert view (cards, table, split view)
-- Cross-source search and filtering
-- Bulk acknowledge and resolve actions with audit trail
-- Role-based access (admin/viewer)
+- Unified alert view (cards, table, split)
+- Cross-source filtering and search
+- Bulk acknowledge/resolve with audit trail
+- Role-based access control
+- SAML SSO support (provider-agnostic)
 - Appearance and branding customization
-- Analytics and alert trend views
+- Analytics and trend views
 
-## 🔧 How to Run
+## Run with Docker Compose
 
-### 🐳 Docker Compose (Published Image)
-
-Compose file uses:
+Image:
 - `aleksanderurbaniak/pulze-dashboard:latest`
+
+`compose.yml` already includes:
+- `APP_VERSION`
+- `APP_BASE_URL` (important for SAML behind domain/reverse proxy)
+
+Example `.env`:
+
+```env
+APP_VERSION=v1.0.0
+APP_BASE_URL=https://pulze-demo.auware.xyz
+```
+
+Start:
 
 ```bash
 docker compose pull
 docker compose up -d
 ```
 
-PulZe runs on `http://localhost:3000`.
+PulZe is available on `http://localhost:3000` (or your configured domain).
 
-### 🐳 Docker Compose (Build Local Source)
-
-```bash
-npm run docker:up
-```
-
-Stop containers:
+Stop:
 
 ```bash
-npm run docker:down
+docker compose down
 ```
 
-### 🐳 Docker Command
-
-Run published image directly:
-
-```bash
-docker run -d --name pulze-dashboard -p 3000:3000 -v pulze-data:/app/data aleksanderurbaniak/pulze-dashboard:latest
-```
-
-Build locally, then run:
-
-`bash`
-```bash
-APP_VERSION=$(npm run --silent version:repo)
-docker build --build-arg APP_VERSION="$APP_VERSION" -t aleksanderurbaniak/pulze-dashboard:latest .
-docker run -d --name pulze-dashboard -p 3000:3000 -v pulze-data:/app/data aleksanderurbaniak/pulze-dashboard:latest
-```
-
-`PowerShell`
-```powershell
-$env:APP_VERSION = npm run --silent version:repo
-docker build --build-arg APP_VERSION=$env:APP_VERSION -t aleksanderurbaniak/pulze-dashboard:latest .
-docker run -d --name pulze-dashboard -p 3000:3000 -v pulze-data:/app/data aleksanderurbaniak/pulze-dashboard:latest
-```
-
-### 💪 Local Development
+## Run from Local Source
 
 Requirements:
-
-- Node.js 20+ (LTS recommended)
+- Node.js 20+
 - npm
 
 ```bash
@@ -86,44 +67,61 @@ npm install
 npm run dev
 ```
 
-Production build locally:
+Production build:
 
 ```bash
 npm run build
 npm start
 ```
 
-## 🆙 Versioning
+## SAML Setup
 
-- App version is resolved from latest local Git tag: `git describe --tags --abbrev=0`
-- Fallback is `package.json` version (`v1.0.0`) when Git metadata is unavailable
+PulZe uses SAML (OIDC is not used in the current flow).
+
+In your IdP (Authentik, Keycloak, Okta, Entra ID, OneLogin, etc.):
+
+1. Create a SAML application/provider.
+2. Set ACS URL to:
+   - `https://your-domain/api/auth/sso/saml/callback`
+3. Set Audience / SP Entity ID to the same value you configure in PulZe `SP entity ID`.
+4. Configure claims/attributes so a username attribute is sent.
+
+In PulZe (`Settings -> Access -> SAML Provider`), fill:
+- `IdP entity ID`
+- `SSO service URL`
+- `SLO service URL` (optional)
+- `Username attribute`
+- `SP entity ID`
+- `SP name ID format`
+
+Notes:
+- `APP_BASE_URL` must match the public URL used by users and IdP.
+- If your IdP does not expose signing certs in metadata, signature validation may fail until signing is configured.
+
+## Versioning
+
+- App version is resolved from latest local Git tag (`git describe --tags --abbrev=0`)
+- Fallback is `package.json` version (`v1.0.0`)
 - Check resolved version:
 
 ```bash
 npm run version:repo
 ```
 
-## 🆕 First Run
+## Data Sources
 
-On first launch, create the initial admin account. After login:
+Multiple instances are supported for each source:
 
-- Configure data sources in `Settings -> Data Sources`
-- Manage users in `Settings -> Users`
-- Adjust look and branding in `Settings -> Appearance` (admin only)
+- Prometheus/Alertmanager: base URL; `/api/v2/alerts` is appended
+- Zabbix: base URL; `/zabbix/api_jsonrpc.php` is appended
+- Uptime Kuma: base URL + mode (`status` or `apiKey`)
 
-## 🔌 Data Sources
+## Data Persistence
 
-Each source supports multiple instances with labels:
-
-- Prometheus/Alertmanager: base URL only, `/api/v2/alerts` is appended automatically
-- Zabbix: base URL only, `/zabbix/api_jsonrpc.php` is appended automatically
-- Uptime Kuma: base URL + mode (status page or API key)
-
-## 💾 Data Persistence
-
-- Local (non-Docker): SQLite file at `data/pulze.db`
+- Local: SQLite file at `data/pulze.db`
 - Docker: named volume `pulze-data` mounted to `/app/data`
 
-## 🛠 Troubleshooting
+## Troubleshooting
 
-If `better-sqlite3` fails to build on Windows, use Node.js LTS and ensure Visual Studio Build Tools are installed.
+- If `better-sqlite3` fails on Windows, use Node.js LTS and install Visual Studio Build Tools.
+- If SAML ACS mismatch appears, set `APP_BASE_URL` to the exact public URL.

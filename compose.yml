@@ -1,15 +1,12 @@
 services:
   pulze-dashboard:
     image: aleksanderurbaniak/pulze-dashboard:latest
-    build:
-      context: .
-      args:
-        APP_VERSION: ${APP_VERSION:-v1.0.0}
+    restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
       NODE_ENV: production
-      APP_VERSION: ${APP_VERSION:-v1.0.0}
+      APP_BASE_URL: ${APP_BASE_URL:-}
     volumes:
       - pulze-data:/app/data
 

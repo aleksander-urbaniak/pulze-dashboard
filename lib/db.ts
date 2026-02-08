@@ -14,7 +14,6 @@ import type {
   SavedView,
   SavedViewFilters,
   Settings,
-  SilenceRule,
   User,
   UserRole,
   ZabbixSource
@@ -66,8 +65,6 @@ export interface SavedViewRow extends SavedView {}
 
 export interface AuditLogRow extends AuditLogEntry {}
 
-export interface SilenceRow extends SilenceRule {}
-
 export interface LoginChallengeRow {
   token: string;
   userId: string;
@@ -108,8 +105,16 @@ const defaultAuthProviders: AuthProvidersSettings = {
   },
   saml: {
     enabled: false,
+    idpIssuer: "",
+    ssoUrlPost: "",
+    ssoUrlRedirect: "",
+    ssoUrlIdpInitiated: "",
+    sloUrlPost: "",
+    sloUrlRedirect: "",
+    usernameAttribute: "username",
     entryPoint: "",
     issuer: "",
+    spNameIdFormat: "urn:oasis:names:tc:SAML:2.0:nameid-format:transient",
     cert: "",
     autoProvision: false
   }
@@ -320,25 +325,6 @@ function migrate() {
       created_at TEXT NOT NULL
     );
 
-    CREATE TABLE IF NOT EXISTS silences (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      source_type TEXT NOT NULL,
-      source_id TEXT NOT NULL DEFAULT '',
-      source_label TEXT NOT NULL DEFAULT '',
-      service_pattern TEXT NOT NULL DEFAULT '',
-      environment_pattern TEXT NOT NULL DEFAULT '',
-      alert_name_pattern TEXT NOT NULL DEFAULT '',
-      instance_pattern TEXT NOT NULL DEFAULT '',
-      severity TEXT NOT NULL DEFAULT 'Any',
-      starts_at TEXT NOT NULL,
-      ends_at TEXT NOT NULL,
-      enabled INTEGER NOT NULL DEFAULT 1,
-      created_by TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-
     CREATE TABLE IF NOT EXISTS login_challenges (
       token TEXT PRIMARY KEY,
       user_id TEXT NOT NULL,
@@ -354,6 +340,13 @@ function migrate() {
       created_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS saml_request_cache (
+      cache_key TEXT PRIMARY KEY,
+      cache_value TEXT NOT NULL,
+      expires_at INTEGER NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS auth_providers (
       id INTEGER PRIMARY KEY,
       settings_json TEXT NOT NULL,
@@ -361,6 +354,7 @@ function migrate() {
       updated_at TEXT NOT NULL
     );
   `);
+  db.exec("DROP TABLE IF EXISTS silences");
 
   ensureColumn("settings", "prometheus_sources", "TEXT NOT NULL DEFAULT '[]'");
   ensureColumn("settings", "zabbix_sources", "TEXT NOT NULL DEFAULT '[]'");
@@ -505,6 +499,10 @@ function normalizeAuthProvidersSettings(
 ): AuthProvidersSettings {
   const oidc: Partial<AuthProvidersSettings["oidc"]> = input?.oidc ?? {};
   const saml: Partial<AuthProvidersSettings["saml"]> = input?.saml ?? {};
+  const ssoUrlPost = saml.ssoUrlPost?.trim() ?? "";
+  const ssoUrlRedirect = saml.ssoUrlRedirect?.trim() ?? "";
+  const ssoUrlIdpInitiated = saml.ssoUrlIdpInitiated?.trim() ?? "";
+  const legacyEntryPoint = saml.entryPoint?.trim() ?? "";
   return {
     oidc: {
       enabled: Boolean(oidc.enabled),
@@ -522,32 +520,20 @@ function normalizeAuthProvidersSettings(
     },
     saml: {
       enabled: Boolean(saml.enabled),
-      entryPoint: saml.entryPoint?.trim() ?? "",
+      idpIssuer: saml.idpIssuer?.trim() ?? "",
+      ssoUrlPost,
+      ssoUrlRedirect,
+      ssoUrlIdpInitiated,
+      sloUrlPost: saml.sloUrlPost?.trim() ?? "",
+      sloUrlRedirect: saml.sloUrlRedirect?.trim() ?? "",
+      usernameAttribute:
+        saml.usernameAttribute?.trim() || defaultAuthProviders.saml.usernameAttribute,
+      entryPoint: legacyEntryPoint || ssoUrlRedirect || ssoUrlPost || ssoUrlIdpInitiated,
       issuer: saml.issuer?.trim() ?? "",
+      spNameIdFormat: saml.spNameIdFormat?.trim() || defaultAuthProviders.saml.spNameIdFormat,
       cert: saml.cert?.trim() ?? "",
       autoProvision: Boolean(saml.autoProvision)
     }
-  };
-}
-
-function toSilenceRow(row: any): SilenceRow {
-  return {
-    id: row.id,
-    name: row.name,
-    sourceType: row.source_type,
-    sourceId: row.source_id || undefined,
-    sourceLabel: row.source_label || undefined,
-    servicePattern: row.service_pattern || undefined,
-    environmentPattern: row.environment_pattern || undefined,
-    alertNamePattern: row.alert_name_pattern || undefined,
-    instancePattern: row.instance_pattern || undefined,
-    severity: row.severity || "Any",
-    startsAt: row.starts_at,
-    endsAt: row.ends_at,
-    enabled: Boolean(row.enabled),
-    createdBy: row.created_by ?? null,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at
   };
 }
 
@@ -1403,148 +1389,6 @@ export function updateAuthProvidersSettings(settings: {
   return getAuthProvidersSettings();
 }
 
-export function listSilences(params?: { includeExpired?: boolean }): SilenceRow[] {
-  const includeExpired = Boolean(params?.includeExpired);
-  const rows = includeExpired
-    ? (db.prepare("SELECT * FROM silences ORDER BY updated_at DESC").all() as Array<any>)
-    : (db
-        .prepare("SELECT * FROM silences WHERE ends_at >= ? ORDER BY updated_at DESC")
-        .all(new Date().toISOString()) as Array<any>);
-  return rows.map(toSilenceRow);
-}
-
-export function listActiveSilences(atIso = new Date().toISOString()): SilenceRow[] {
-  const rows = db
-    .prepare(
-      `SELECT * FROM silences
-       WHERE enabled = 1
-         AND starts_at <= ?
-         AND ends_at >= ?
-       ORDER BY created_at DESC`
-    )
-    .all(atIso, atIso) as Array<any>;
-  return rows.map(toSilenceRow);
-}
-
-export function getSilenceById(id: string): SilenceRow | null {
-  const row = db.prepare("SELECT * FROM silences WHERE id = ?").get(id);
-  return row ? toSilenceRow(row) : null;
-}
-
-export function createSilence(input: Omit<SilenceRule, "id" | "createdAt" | "updatedAt">): SilenceRow {
-  const id = crypto.randomUUID();
-  const now = new Date().toISOString();
-  db.prepare(
-    `INSERT INTO silences (
-      id,
-      name,
-      source_type,
-      source_id,
-      source_label,
-      service_pattern,
-      environment_pattern,
-      alert_name_pattern,
-      instance_pattern,
-      severity,
-      starts_at,
-      ends_at,
-      enabled,
-      created_by,
-      created_at,
-      updated_at
-    ) VALUES (
-      @id,
-      @name,
-      @sourceType,
-      @sourceId,
-      @sourceLabel,
-      @servicePattern,
-      @environmentPattern,
-      @alertNamePattern,
-      @instancePattern,
-      @severity,
-      @startsAt,
-      @endsAt,
-      @enabled,
-      @createdBy,
-      @createdAt,
-      @updatedAt
-    )`
-  ).run({
-    id,
-    name: input.name,
-    sourceType: input.sourceType,
-    sourceId: input.sourceId ?? "",
-    sourceLabel: input.sourceLabel ?? "",
-    servicePattern: input.servicePattern ?? "",
-    environmentPattern: input.environmentPattern ?? "",
-    alertNamePattern: input.alertNamePattern ?? "",
-    instancePattern: input.instancePattern ?? "",
-    severity: input.severity ?? "Any",
-    startsAt: input.startsAt,
-    endsAt: input.endsAt,
-    enabled: input.enabled ? 1 : 0,
-    createdBy: input.createdBy,
-    createdAt: now,
-    updatedAt: now
-  });
-  return getSilenceById(id) as SilenceRow;
-}
-
-export function updateSilence(
-  id: string,
-  updates: Partial<Omit<SilenceRule, "id" | "createdAt" | "updatedAt">>
-): SilenceRow | null {
-  const current = getSilenceById(id);
-  if (!current) {
-    return null;
-  }
-  const next = {
-    ...current,
-    ...updates
-  };
-  const now = new Date().toISOString();
-  db.prepare(
-    `UPDATE silences SET
-      name = @name,
-      source_type = @sourceType,
-      source_id = @sourceId,
-      source_label = @sourceLabel,
-      service_pattern = @servicePattern,
-      environment_pattern = @environmentPattern,
-      alert_name_pattern = @alertNamePattern,
-      instance_pattern = @instancePattern,
-      severity = @severity,
-      starts_at = @startsAt,
-      ends_at = @endsAt,
-      enabled = @enabled,
-      created_by = @createdBy,
-      updated_at = @updatedAt
-     WHERE id = @id`
-  ).run({
-    id,
-    name: next.name,
-    sourceType: next.sourceType,
-    sourceId: next.sourceId ?? "",
-    sourceLabel: next.sourceLabel ?? "",
-    servicePattern: next.servicePattern ?? "",
-    environmentPattern: next.environmentPattern ?? "",
-    alertNamePattern: next.alertNamePattern ?? "",
-    instancePattern: next.instancePattern ?? "",
-    severity: next.severity ?? "Any",
-    startsAt: next.startsAt,
-    endsAt: next.endsAt,
-    enabled: next.enabled ? 1 : 0,
-    createdBy: next.createdBy ?? null,
-    updatedAt: now
-  });
-  return getSilenceById(id);
-}
-
-export function deleteSilence(id: string) {
-  db.prepare("DELETE FROM silences WHERE id = ?").run(id);
-}
-
 export function createLoginChallenge(userId: string, ttlMinutes = 10): LoginChallengeRow {
   const token = crypto.randomUUID();
   const createdAt = new Date().toISOString();
@@ -1602,6 +1446,43 @@ export function consumeOidcState(state: string): OidcStateRow | null {
     expiresAt: Number(row.expires_at),
     createdAt: row.created_at
   };
+}
+
+export function saveSamlRequestCache(key: string, value: string, expiresAt: number) {
+  const createdAt = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO saml_request_cache (cache_key, cache_value, expires_at, created_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(cache_key) DO UPDATE SET
+       cache_value = excluded.cache_value,
+       expires_at = excluded.expires_at,
+       created_at = excluded.created_at`
+  ).run(key, value, expiresAt, createdAt);
+}
+
+export function getSamlRequestCache(key: string): string | null {
+  const row = db
+    .prepare("SELECT cache_value, expires_at FROM saml_request_cache WHERE cache_key = ?")
+    .get(key) as { cache_value: string; expires_at: number } | undefined;
+  if (!row) {
+    return null;
+  }
+  if (Number(row.expires_at) < Date.now()) {
+    db.prepare("DELETE FROM saml_request_cache WHERE cache_key = ?").run(key);
+    return null;
+  }
+  return row.cache_value;
+}
+
+export function removeSamlRequestCache(key: string | null): string | null {
+  if (!key) {
+    return null;
+  }
+  const row = db
+    .prepare("SELECT cache_value FROM saml_request_cache WHERE cache_key = ?")
+    .get(key) as { cache_value: string } | undefined;
+  db.prepare("DELETE FROM saml_request_cache WHERE cache_key = ?").run(key);
+  return row?.cache_value ?? null;
 }
 
 export function createSession(userId: string, ttlHours = 24 * 7) {

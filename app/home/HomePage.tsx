@@ -55,10 +55,7 @@ export default function HomePage() {
   const [loginTotpCode, setLoginTotpCode] = useState("");
   const [loginChallengeToken, setLoginChallengeToken] = useState<string | null>(null);
   const [loginError, setLoginError] = useState<string | null>(null);
-  const [ssoProviders, setSsoProviders] = useState<{ oidc: boolean; saml: boolean }>({
-    oidc: false,
-    saml: false
-  });
+  const [ssoProviders, setSsoProviders] = useState<{ saml: boolean }>({ saml: false });
   const [setupForm, setSetupForm] = useState({
     firstName: "",
     lastName: "",
@@ -365,12 +362,11 @@ export default function HomePage() {
   async function loadSsoProviders() {
     const response = await fetch("/api/auth/sso/providers");
     if (!response.ok) {
-      setSsoProviders({ oidc: false, saml: false });
+      setSsoProviders({ saml: false });
       return;
     }
-    const data = (await response.json()) as { oidc?: boolean; saml?: boolean };
+    const data = (await response.json()) as { saml?: boolean };
     setSsoProviders({
-      oidc: Boolean(data.oidc),
       saml: Boolean(data.saml)
     });
   }

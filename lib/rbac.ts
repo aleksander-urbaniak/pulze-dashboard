@@ -6,39 +6,31 @@ export type Permission =
   | "alerts.ack"
   | "settings.read"
   | "settings.write"
-  | "silences.read"
-  | "silences.write"
   | "users.manage"
   | "audit.read";
 
 const rolePermissions: Record<UserRole, Permission[]> = {
-  viewer: ["dashboard.read", "analytics.read", "silences.read"],
+  viewer: ["dashboard.read", "analytics.read"],
   operator: [
     "dashboard.read",
     "analytics.read",
     "alerts.ack",
-    "settings.read",
-    "silences.read",
-    "silences.write"
+    "settings.read"
   ],
   manager: [
     "dashboard.read",
     "analytics.read",
     "alerts.ack",
     "settings.read",
-    "settings.write",
-    "silences.read",
-    "silences.write"
+    "settings.write"
   ],
-  auditor: ["dashboard.read", "analytics.read", "audit.read", "silences.read"],
+  auditor: ["dashboard.read", "analytics.read", "audit.read"],
   admin: [
     "dashboard.read",
     "analytics.read",
     "alerts.ack",
     "settings.read",
     "settings.write",
-    "silences.read",
-    "silences.write",
     "users.manage",
     "audit.read"
   ]

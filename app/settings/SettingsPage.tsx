@@ -11,7 +11,6 @@ import type {
   KumaSource,
   PrometheusSource,
   Settings,
-  SilenceRule,
   ThemePalette,
   User,
   UserRole,
@@ -23,7 +22,6 @@ import DataSourcesSection from "./components/DataSourcesSection";
 import AppearanceSection from "./components/AppearanceSection";
 import AuditSection from "./components/AuditSection";
 import UsersSection from "./components/UsersSection";
-import SilencesSection from "./components/SilencesSection";
 import AuthProvidersSection from "./components/AuthProvidersSection";
 
 const emptySettings: Settings = {
@@ -38,9 +36,8 @@ type SettingsResponse = { settings: Settings; canEdit: boolean };
 type UserResponse = { user: User };
 type UsersResponse = { users: User[] };
 type AuditLogResponse = { logs: AuditLogEntry[]; total: number };
-type SilencesResponse = { silences: SilenceRule[] };
 type AuthProvidersResponse = { settings: AuthProvidersSettings };
-type TabKey = "data" | "silences" | "appearance" | "users" | "audit" | "access";
+type TabKey = "data" | "appearance" | "users" | "audit" | "access";
 
 const defaultAuthProviders: AuthProvidersSettings = {
   oidc: {
@@ -59,8 +56,16 @@ const defaultAuthProviders: AuthProvidersSettings = {
   },
   saml: {
     enabled: false,
+    idpIssuer: "",
+    ssoUrlPost: "",
+    ssoUrlRedirect: "",
+    ssoUrlIdpInitiated: "",
+    sloUrlPost: "",
+    sloUrlRedirect: "",
+    usernameAttribute: "username",
     entryPoint: "",
     issuer: "",
+    spNameIdFormat: "urn:oasis:names:tc:SAML:2.0:nameid-format:transient",
     cert: "",
     autoProvision: false
   }
@@ -111,22 +116,6 @@ export default function SettingsPage() {
   const [settingsDraft, setSettingsDraft] = useState<Settings>(emptySettings);
   const [canEditSettings, setCanEditSettings] = useState(false);
   const [settingsStatus, setSettingsStatus] = useState<string | null>(null);
-  const [silences, setSilences] = useState<SilenceRule[]>([]);
-  const [silenceStatus, setSilenceStatus] = useState<string | null>(null);
-  const [silenceDraft, setSilenceDraft] = useState({
-    name: "",
-    sourceType: "Any" as "Any" | "Prometheus" | "Zabbix" | "Kuma",
-    sourceId: "",
-    sourceLabel: "",
-    servicePattern: "",
-    environmentPattern: "",
-    alertNamePattern: "",
-    instancePattern: "",
-    severity: "Any" as "Any" | "critical" | "warning" | "info",
-    startsAt: "",
-    endsAt: "",
-    enabled: true
-  });
   const [authDraft, setAuthDraft] = useState<AuthProvidersSettings>(defaultAuthProviders);
   const [authStatus, setAuthStatus] = useState<string | null>(null);
   const [profileDraft, setProfileDraft] = useState({
@@ -173,9 +162,6 @@ export default function SettingsPage() {
       if (hasPermission(user, "users.manage")) {
         void loadUsers();
       }
-      if (hasPermission(user, "silences.read")) {
-        void loadSilences();
-      }
       if (hasPermission(user, "settings.write")) {
         void loadAuthProviders();
       }
@@ -183,8 +169,6 @@ export default function SettingsPage() {
   }, [user]);
 
   const canViewSettings = useMemo(() => hasPermission(user, "settings.read"), [user]);
-  const canManageSilences = useMemo(() => hasPermission(user, "silences.write"), [user]);
-  const canReadSilences = useMemo(() => hasPermission(user, "silences.read"), [user]);
   const canManageUsers = useMemo(() => hasPermission(user, "users.manage"), [user]);
   const canReadAudit = useMemo(() => hasPermission(user, "audit.read"), [user]);
   const canConfigureAuth = useMemo(() => hasPermission(user, "settings.write"), [user]);
@@ -195,9 +179,6 @@ export default function SettingsPage() {
       items.unshift({ value: "data", label: "Data Sources" });
       items.push({ value: "appearance", label: "Appearance" });
     }
-    if (canReadSilences) {
-      items.push({ value: "silences", label: "Silences" });
-    }
     if (canReadAudit) {
       items.push({ value: "audit", label: "Audit Log" });
     }
@@ -205,7 +186,7 @@ export default function SettingsPage() {
       items.push({ value: "access", label: "Access" });
     }
     return items;
-  }, [canConfigureAuth, canReadAudit, canReadSilences, canViewSettings]);
+  }, [canConfigureAuth, canReadAudit, canViewSettings]);
 
   useEffect(() => {
     if (settingsTabItems.length === 0) {
@@ -559,94 +540,6 @@ export default function SettingsPage() {
     }));
   }
 
-  async function loadSilences() {
-    if (!canReadSilences) {
-      return;
-    }
-    const response = await fetch("/api/silences");
-    if (!response.ok) {
-      setSilenceStatus("Failed to load silences.");
-      return;
-    }
-    const data = (await response.json()) as SilencesResponse;
-    setSilences(data.silences ?? []);
-    setSilenceStatus(null);
-  }
-
-  async function createSilenceEntry() {
-    if (!canManageSilences) {
-      return;
-    }
-    const start = silenceDraft.startsAt || new Date().toISOString().slice(0, 16);
-    const end =
-      silenceDraft.endsAt ||
-      new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 16);
-    const response = await fetch("/api/silences", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...silenceDraft,
-        startsAt: start,
-        endsAt: end
-      })
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      setSilenceStatus(data.error ?? "Failed to create silence.");
-      return;
-    }
-    setSilenceStatus("Silence created.");
-    setSilenceDraft({
-      name: "",
-      sourceType: "Any",
-      sourceId: "",
-      sourceLabel: "",
-      servicePattern: "",
-      environmentPattern: "",
-      alertNamePattern: "",
-      instancePattern: "",
-      severity: "Any",
-      startsAt: "",
-      endsAt: "",
-      enabled: true
-    });
-    await loadSilences();
-  }
-
-  async function toggleSilenceState(silence: SilenceRule, enabled: boolean) {
-    if (!canManageSilences) {
-      return;
-    }
-    const response = await fetch("/api/silences", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: silence.id, enabled })
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      setSilenceStatus(data.error ?? "Failed to update silence.");
-      return;
-    }
-    await loadSilences();
-  }
-
-  async function deleteSilenceEntry(id: string) {
-    if (!canManageSilences) {
-      return;
-    }
-    const response = await fetch("/api/silences", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id })
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      setSilenceStatus(data.error ?? "Failed to delete silence.");
-      return;
-    }
-    await loadSilences();
-  }
-
   async function loadAuthProviders() {
     if (!canConfigureAuth) {
       return;
@@ -726,27 +619,6 @@ export default function SettingsPage() {
     setUser(data.user);
   }
 
-  const silenceSourceOptions = useMemo(
-    () => [
-      ...settingsDraft.prometheusSources.map((source) => ({
-        id: source.id,
-        type: "Prometheus" as const,
-        label: source.name || source.url
-      })),
-      ...settingsDraft.zabbixSources.map((source) => ({
-        id: source.id,
-        type: "Zabbix" as const,
-        label: source.name || source.url
-      })),
-      ...settingsDraft.kumaSources.map((source) => ({
-        id: source.id,
-        type: "Kuma" as const,
-        label: source.name || source.baseUrl
-      }))
-    ],
-    [settingsDraft.kumaSources, settingsDraft.prometheusSources, settingsDraft.zabbixSources]
-  );
-
   if (isLoading || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4 sm:px-6">
@@ -787,21 +659,6 @@ export default function SettingsPage() {
               updateKumaSource={updateKumaSource}
               testSource={testSource}
               testKey={testKey}
-            />
-          ) : null}
-
-          {activeTab === "silences" && canReadSilences ? (
-            <SilencesSection
-              canEditSilences={canManageSilences}
-              silences={silences}
-              silenceStatus={silenceStatus}
-              silenceDraft={silenceDraft}
-              setSilenceDraft={setSilenceDraft}
-              sourceOptions={silenceSourceOptions}
-              onCreateSilence={createSilenceEntry}
-              onToggleSilence={toggleSilenceState}
-              onDeleteSilence={deleteSilenceEntry}
-              onRefresh={() => void loadSilences()}
             />
           ) : null}
 

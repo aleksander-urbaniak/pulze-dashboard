@@ -3,10 +3,11 @@
 .next
 node_modules
 npm-debug.log
-README.md
 .env
 .env.*
 Dockerfile
-docker-compose.yml
+compose.yml
+.vscode
+data
 *.log
 *.tsbuildinfo

@@ -10,11 +10,9 @@ import type {
 } from "./types";
 import {
   getSourceHealth,
-  listActiveSilences,
   recordSourceFailure,
   recordSourceSuccess
 } from "./db";
-import { applyAlertSilences } from "./alert-processing";
 import type { SettingsRow } from "./db";
 
 export type AlertFetchError = { source: string; message: string };
@@ -288,7 +286,6 @@ export async function fetchPrometheusTestLine(source: PrometheusSource): Promise
 export async function fetchPrometheusAlerts(settings: SettingsRow): Promise<AlertFetchResult> {
   const alerts: Alert[] = [];
   const errors: AlertFetchError[] = [];
-  const activeSilences = listActiveSilences();
 
   for (const source of settings.prometheusSources) {
     if (!source.url) {
@@ -304,7 +301,7 @@ export async function fetchPrometheusAlerts(settings: SettingsRow): Promise<Aler
     }
     try {
       const sourceAlerts = await fetchPrometheusFromSource(source);
-      alerts.push(...applyAlertSilences(sourceAlerts, activeSilences));
+      alerts.push(...sourceAlerts);
       recordSourceSuccess("Prometheus", source.id);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Request failed";
@@ -425,7 +422,6 @@ export async function fetchZabbixTestLine(source: ZabbixSource): Promise<string 
 export async function fetchZabbixAlerts(settings: SettingsRow): Promise<AlertFetchResult> {
   const alerts: Alert[] = [];
   const errors: AlertFetchError[] = [];
-  const activeSilences = listActiveSilences();
 
   for (const source of settings.zabbixSources) {
     if (!source.url) {
@@ -441,7 +437,7 @@ export async function fetchZabbixAlerts(settings: SettingsRow): Promise<AlertFet
     }
     try {
       const sourceAlerts = await fetchZabbixFromSource(source);
-      alerts.push(...applyAlertSilences(sourceAlerts, activeSilences));
+      alerts.push(...sourceAlerts);
       recordSourceSuccess("Zabbix", source.id);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Request failed";
@@ -628,7 +624,6 @@ async function fetchKumaMetricsDown(source: KumaSource) {
 export async function fetchKumaAlerts(settings: SettingsRow): Promise<AlertFetchResult> {
   const alerts: Alert[] = [];
   const errors: AlertFetchError[] = [];
-  const activeSilences = listActiveSilences();
 
   for (const source of settings.kumaSources) {
     if (!source.baseUrl) {
@@ -647,7 +642,7 @@ export async function fetchKumaAlerts(settings: SettingsRow): Promise<AlertFetch
         source.mode === "apiKey"
           ? await fetchKumaApiKeyAlerts(source)
           : await fetchKumaStatusAlerts(source);
-      alerts.push(...applyAlertSilences(sourceAlerts, activeSilences));
+      alerts.push(...sourceAlerts);
       recordSourceSuccess("Kuma", source.id);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Request failed";
