@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - main
+    tags:
+      - "v*"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   release:
@@ -18,14 +20,9 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Calculate and Create Next Tag
-        id: tag_version
-        uses: mathieudutour/github-tag-action@v6.2
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          default_bump: patch
-          tag_prefix: v
-          create_tag: true
+      - name: Read app version from package.json
+        id: app_version
+        run: echo "value=$(node -p \"require('./package.json').version\")" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -43,4 +40,4 @@ jobs:
           push: true
           tags: |
             aleksanderurbaniak/pulze-dashboard:latest
-            aleksanderurbaniak/pulze-dashboard:${{ steps.tag_version.outputs.new_tag }}
+            aleksanderurbaniak/pulze-dashboard:${{ steps.app_version.outputs.value }}
