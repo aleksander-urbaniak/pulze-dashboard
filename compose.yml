@@ -1,6 +1,6 @@
 services:
   pulze-dashboard:
-    image: pulze-dashboard:${APP_VERSION:-v1.0.0}
+    image: aleksanderurbaniak/pulze-dashboard:latest
     build:
       context: .
       args:
