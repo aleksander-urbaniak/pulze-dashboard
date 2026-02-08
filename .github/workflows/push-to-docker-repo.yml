@@ -4,11 +4,13 @@ on:
   push:
     branches:
       - main
-    tags:
-      - "v*"
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   release:
@@ -20,9 +22,37 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Read app version from package.json
+      - name: Calculate next patch version tag
         id: app_version
-        run: node -e "const fs=require('fs');const v=require('./package.json').version;fs.appendFileSync(process.env.GITHUB_OUTPUT,'value='+v+'\\n');"
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+          latest_tag="$(git tag -l 'v*' --sort=-v:refname | head -n 1)"
+          if [ -z "$latest_tag" ]; then
+            next_tag="v1.0.0"
+          else
+            version="${latest_tag#v}"
+            IFS='.' read -r major minor patch <<< "$version"
+            patch=$((patch + 1))
+            next_tag="v${major}.${minor}.${patch}"
+          fi
+          echo "value=$next_tag" >> "$GITHUB_OUTPUT"
+          echo "Next tag: $next_tag"
+
+      - name: Create and push git tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ steps.app_version.outputs.value }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git rev-parse "$tag" >/dev/null 2>&1; then
+            echo "Tag $tag already exists; skipping."
+          else
+            git tag -a "$tag" -m "Release $tag"
+            git push origin "$tag"
+          fi
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -38,6 +68,10 @@ jobs:
         with:
           context: .
           push: true
+          build-args: |
+            APP_VERSION=${{ steps.app_version.outputs.value }}
+          labels: |
+            org.opencontainers.image.version=${{ steps.app_version.outputs.value }}
           tags: |
             aleksanderurbaniak/pulze-dashboard:latest
             aleksanderurbaniak/pulze-dashboard:${{ steps.app_version.outputs.value }}

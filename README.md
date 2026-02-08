@@ -31,13 +31,11 @@ Image:
 - `aleksanderurbaniak/pulze-dashboard:latest`
 
 `compose.yml` already includes:
-- `APP_VERSION`
 - `APP_BASE_URL` (important for SAML behind domain/reverse proxy)
 
 Example `.env`:
 
 ```env
-APP_VERSION=v1.0.0
 APP_BASE_URL=https://pulze-demo.auware.xyz
 ```
 
@@ -102,6 +100,8 @@ Notes:
 
 - App version is resolved from latest local Git tag (`git describe --tags --abbrev=0`)
 - Fallback is `package.json` version (`v1.0.0`)
+- Docker images are auto-tagged on each merge to `main` (`v1.0.0`, `v1.0.1`, ...)
+- CI injects that tag into the build, so compose does not need `APP_VERSION`
 - Check resolved version:
 
 ```bash
