@@ -13,7 +13,7 @@ PulZe is a self-hosted monitoring dashboard that aggregates alerts from Promethe
 <img src="https://img.shields.io/badge/SQLite-3-003B57?logo=sqlite&logoColor=white" />
 <img src="https://img.shields.io/badge/Node.js-20-339933?logo=node.js&logoColor=white" />
 
-<img src="./public/images/dashboard.png" width="900" alt="PulZe Dashboard Screenshot" />
+<img src="./docs/images/dashboard.png" width="900" alt="PulZe Dashboard Screenshot" />
 
 ## Features
 

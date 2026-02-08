@@ -28,5 +28,14 @@ COPY --from=base /app/public ./public
 COPY --from=base /app/next.config.mjs ./next.config.mjs
 COPY --from=base /app/data ./data
 
+# Pick up runtime security updates available in Debian repositories.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends --only-upgrade tar \
+  && rm -rf /var/lib/apt/lists/*
+
+# Remove npm/npx from runtime image to reduce attack surface and avoid npm-only CVEs.
+RUN rm -rf /usr/local/lib/node_modules/npm \
+  && rm -f /usr/local/bin/npm /usr/local/bin/npx
+
 EXPOSE 3000
-CMD ["npm", "start"]
+CMD ["node", "node_modules/next/dist/bin/next", "start"]
