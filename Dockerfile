@@ -1,7 +1,10 @@
 FROM node:20-bookworm-slim AS base
 
 WORKDIR /app
+ARG APP_VERSION=
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV APP_VERSION=${APP_VERSION}
+ENV NEXT_PUBLIC_APP_VERSION=${APP_VERSION}
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends python3 make g++ \
