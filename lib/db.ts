@@ -6,6 +6,7 @@ import path from "path";
 
 import type {
   Alert,
+  AuthProvidersSettings,
   AppearanceSettings,
   AuditLogEntry,
   KumaSource,
@@ -13,13 +14,18 @@ import type {
   SavedView,
   SavedViewFilters,
   Settings,
+  SilenceRule,
   User,
+  UserRole,
   ZabbixSource
 } from "./types";
 import { defaultAppearance, normalizeAppearanceSettings } from "./appearance";
 
 export interface UserRow extends User {
   passwordHash: string;
+  twoFactorSecret: string;
+  externalSubject: string;
+  authProvider: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -60,12 +66,53 @@ export interface SavedViewRow extends SavedView {}
 
 export interface AuditLogRow extends AuditLogEntry {}
 
+export interface SilenceRow extends SilenceRule {}
+
+export interface LoginChallengeRow {
+  token: string;
+  userId: string;
+  expiresAt: number;
+  createdAt: string;
+}
+
+export interface OidcStateRow {
+  state: string;
+  codeVerifier: string;
+  returnTo: string;
+  expiresAt: number;
+  createdAt: string;
+}
+
 const defaultSettings: Settings = {
   prometheusSources: [],
   zabbixSources: [],
   kumaSources: [],
   refreshInterval: 30,
   appearance: defaultAppearance
+};
+
+const defaultAuthProviders: AuthProvidersSettings = {
+  oidc: {
+    enabled: false,
+    issuerUrl: "",
+    authorizationEndpoint: "",
+    tokenEndpoint: "",
+    userinfoEndpoint: "",
+    clientId: "",
+    clientSecret: "",
+    scopes: "openid profile email",
+    usernameClaim: "preferred_username",
+    emailClaim: "email",
+    nameClaim: "name",
+    autoProvision: true
+  },
+  saml: {
+    enabled: false,
+    entryPoint: "",
+    issuer: "",
+    cert: "",
+    autoProvision: false
+  }
 };
 
 const legacyDefaults = {
@@ -272,6 +319,47 @@ function migrate() {
       details TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS silences (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      source_type TEXT NOT NULL,
+      source_id TEXT NOT NULL DEFAULT '',
+      source_label TEXT NOT NULL DEFAULT '',
+      service_pattern TEXT NOT NULL DEFAULT '',
+      environment_pattern TEXT NOT NULL DEFAULT '',
+      alert_name_pattern TEXT NOT NULL DEFAULT '',
+      instance_pattern TEXT NOT NULL DEFAULT '',
+      severity TEXT NOT NULL DEFAULT 'Any',
+      starts_at TEXT NOT NULL,
+      ends_at TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_by TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS login_challenges (
+      token TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      expires_at INTEGER NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS oidc_states (
+      state TEXT PRIMARY KEY,
+      code_verifier TEXT NOT NULL,
+      return_to TEXT NOT NULL DEFAULT '/',
+      expires_at INTEGER NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS auth_providers (
+      id INTEGER PRIMARY KEY,
+      settings_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
   `);
 
   ensureColumn("settings", "prometheus_sources", "TEXT NOT NULL DEFAULT '[]'");
@@ -279,11 +367,23 @@ function migrate() {
   ensureColumn("settings", "kuma_sources", "TEXT NOT NULL DEFAULT '[]'");
   ensureColumn("settings", "appearance_json", "TEXT NOT NULL DEFAULT '{}'");
   ensureColumn("users", "avatar_url", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("users", "two_factor_enabled", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn("users", "two_factor_secret", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("users", "external_subject", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn("users", "auth_provider", "TEXT NOT NULL DEFAULT ''");
 }
 
 migrate();
 
 function toUser(row: any): UserRow {
+  const roleValue = String(row.role ?? "viewer");
+  const role: UserRole =
+    roleValue === "admin" ||
+    roleValue === "manager" ||
+    roleValue === "operator" ||
+    roleValue === "auditor"
+      ? roleValue
+      : "viewer";
   return {
     id: row.id,
     username: row.username,
@@ -292,7 +392,11 @@ function toUser(row: any): UserRow {
     email: row.email,
     avatarUrl: row.avatar_url ?? "",
     passwordHash: row.password_hash,
-    role: row.role,
+    role,
+    twoFactorEnabled: Boolean(row.two_factor_enabled),
+    twoFactorSecret: row.two_factor_secret ?? "",
+    externalSubject: row.external_subject ?? "",
+    authProvider: row.auth_provider ?? "",
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -396,6 +500,57 @@ function toSavedView(row: any): SavedViewRow {
   };
 }
 
+function normalizeAuthProvidersSettings(
+  input: Partial<AuthProvidersSettings> | null | undefined
+): AuthProvidersSettings {
+  const oidc: Partial<AuthProvidersSettings["oidc"]> = input?.oidc ?? {};
+  const saml: Partial<AuthProvidersSettings["saml"]> = input?.saml ?? {};
+  return {
+    oidc: {
+      enabled: Boolean(oidc.enabled),
+      issuerUrl: oidc.issuerUrl?.trim() ?? "",
+      authorizationEndpoint: oidc.authorizationEndpoint?.trim() ?? "",
+      tokenEndpoint: oidc.tokenEndpoint?.trim() ?? "",
+      userinfoEndpoint: oidc.userinfoEndpoint?.trim() ?? "",
+      clientId: oidc.clientId?.trim() ?? "",
+      clientSecret: oidc.clientSecret?.trim() ?? "",
+      scopes: oidc.scopes?.trim() || defaultAuthProviders.oidc.scopes,
+      usernameClaim: oidc.usernameClaim?.trim() || defaultAuthProviders.oidc.usernameClaim,
+      emailClaim: oidc.emailClaim?.trim() || defaultAuthProviders.oidc.emailClaim,
+      nameClaim: oidc.nameClaim?.trim() || defaultAuthProviders.oidc.nameClaim,
+      autoProvision: oidc.autoProvision !== false
+    },
+    saml: {
+      enabled: Boolean(saml.enabled),
+      entryPoint: saml.entryPoint?.trim() ?? "",
+      issuer: saml.issuer?.trim() ?? "",
+      cert: saml.cert?.trim() ?? "",
+      autoProvision: Boolean(saml.autoProvision)
+    }
+  };
+}
+
+function toSilenceRow(row: any): SilenceRow {
+  return {
+    id: row.id,
+    name: row.name,
+    sourceType: row.source_type,
+    sourceId: row.source_id || undefined,
+    sourceLabel: row.source_label || undefined,
+    servicePattern: row.service_pattern || undefined,
+    environmentPattern: row.environment_pattern || undefined,
+    alertNamePattern: row.alert_name_pattern || undefined,
+    instancePattern: row.instance_pattern || undefined,
+    severity: row.severity || "Any",
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    enabled: Boolean(row.enabled),
+    createdBy: row.created_by ?? null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
 function seed() {
   const settingsRow = db.prepare("SELECT id FROM settings WHERE id = 1").get();
   if (!settingsRow) {
@@ -449,6 +604,19 @@ function seed() {
       updatedAt: now
     });
   }
+
+  const authRow = db.prepare("SELECT id FROM auth_providers WHERE id = 1").get();
+  if (!authRow) {
+    const now = new Date().toISOString();
+    db.prepare(
+      `INSERT INTO auth_providers (id, settings_json, created_at, updated_at)
+       VALUES (1, @settingsJson, @createdAt, @updatedAt)`
+    ).run({
+      settingsJson: JSON.stringify(defaultAuthProviders),
+      createdAt: now,
+      updatedAt: now
+    });
+  }
 }
 
 seed();
@@ -473,6 +641,23 @@ export function getUserByUsername(username: string): UserRow | null {
   return row ? toUser(row) : null;
 }
 
+export function getUserByEmail(email: string): UserRow | null {
+  const row = db
+    .prepare("SELECT * FROM users WHERE LOWER(email) = LOWER(?)")
+    .get(email.trim());
+  return row ? toUser(row) : null;
+}
+
+export function getUserByExternalIdentity(
+  provider: "oidc" | "saml",
+  externalSubject: string
+): UserRow | null {
+  const row = db
+    .prepare("SELECT * FROM users WHERE auth_provider = ? AND external_subject = ?")
+    .get(provider, externalSubject);
+  return row ? toUser(row) : null;
+}
+
 export function createUser(input: {
   username: string;
   firstName: string;
@@ -480,14 +665,46 @@ export function createUser(input: {
   email: string;
   avatarUrl?: string;
   password: string;
-  role: "viewer" | "admin";
+  role: UserRole;
+  externalSubject?: string;
+  authProvider?: "local" | "oidc" | "saml";
 }): UserRow {
   const now = new Date().toISOString();
   const passwordHash = bcrypt.hashSync(input.password, 10);
   const id = crypto.randomUUID();
   db.prepare(
-    `INSERT INTO users (id, username, first_name, last_name, email, avatar_url, password_hash, role, created_at, updated_at)
-     VALUES (@id, @username, @firstName, @lastName, @email, @avatarUrl, @passwordHash, @role, @createdAt, @updatedAt)`
+    `INSERT INTO users (
+      id,
+      username,
+      first_name,
+      last_name,
+      email,
+      avatar_url,
+      password_hash,
+      role,
+      two_factor_enabled,
+      two_factor_secret,
+      external_subject,
+      auth_provider,
+      created_at,
+      updated_at
+    )
+     VALUES (
+      @id,
+      @username,
+      @firstName,
+      @lastName,
+      @email,
+      @avatarUrl,
+      @passwordHash,
+      @role,
+      0,
+      '',
+      @externalSubject,
+      @authProvider,
+      @createdAt,
+      @updatedAt
+    )`
   ).run({
     id,
     username: input.username,
@@ -497,6 +714,8 @@ export function createUser(input: {
     avatarUrl: input.avatarUrl ?? "",
     passwordHash,
     role: input.role,
+    externalSubject: input.externalSubject ?? "",
+    authProvider: input.authProvider ?? "local",
     createdAt: now,
     updatedAt: now
   });
@@ -512,11 +731,15 @@ export function updateUser(
     email: string;
     avatarUrl: string;
     passwordHash: string;
-    role: "viewer" | "admin";
+    role: UserRole;
+    twoFactorEnabled: boolean;
+    twoFactorSecret: string;
+    externalSubject: string;
+    authProvider: "local" | "oidc" | "saml";
   }>
 ): UserRow {
   const fields: string[] = [];
-  const params: Record<string, string> = { id };
+  const params: Record<string, unknown> = { id };
 
   if (updates.username !== undefined) {
     fields.push("username = @username");
@@ -546,6 +769,22 @@ export function updateUser(
     fields.push("role = @role");
     params.role = updates.role;
   }
+  if (updates.twoFactorEnabled !== undefined) {
+    fields.push("two_factor_enabled = @twoFactorEnabled");
+    params.twoFactorEnabled = updates.twoFactorEnabled ? 1 : 0;
+  }
+  if (updates.twoFactorSecret !== undefined) {
+    fields.push("two_factor_secret = @twoFactorSecret");
+    params.twoFactorSecret = updates.twoFactorSecret;
+  }
+  if (updates.externalSubject !== undefined) {
+    fields.push("external_subject = @externalSubject");
+    params.externalSubject = updates.externalSubject;
+  }
+  if (updates.authProvider !== undefined) {
+    fields.push("auth_provider = @authProvider");
+    params.authProvider = updates.authProvider;
+  }
 
   if (fields.length === 0) {
     return getUserById(id) as UserRow;
@@ -561,6 +800,26 @@ export function updateUser(
 
 export function deleteUser(id: string) {
   db.prepare("DELETE FROM users WHERE id = ?").run(id);
+}
+
+export function beginUserTwoFactorEnrollment(userId: string, secret: string) {
+  return updateUser(userId, {
+    twoFactorSecret: secret,
+    twoFactorEnabled: false
+  });
+}
+
+export function enableUserTwoFactor(userId: string) {
+  return updateUser(userId, {
+    twoFactorEnabled: true
+  });
+}
+
+export function disableUserTwoFactor(userId: string) {
+  return updateUser(userId, {
+    twoFactorEnabled: false,
+    twoFactorSecret: ""
+  });
 }
 
 export function getSettings(): SettingsRow {
@@ -1109,6 +1368,240 @@ export function countAuditLogs() {
     total: number;
   };
   return row?.total ?? 0;
+}
+
+export function getAuthProvidersSettings(): AuthProvidersSettings {
+  const row = db.prepare("SELECT settings_json FROM auth_providers WHERE id = 1").get() as
+    | { settings_json: string }
+    | undefined;
+  if (!row) {
+    return defaultAuthProviders;
+  }
+  const parsed = safeJsonParse<Partial<AuthProvidersSettings>>(row.settings_json, defaultAuthProviders);
+  return normalizeAuthProvidersSettings(parsed);
+}
+
+export function updateAuthProvidersSettings(settings: {
+  oidc?: Partial<AuthProvidersSettings["oidc"]>;
+  saml?: Partial<AuthProvidersSettings["saml"]>;
+}) {
+  const current = getAuthProvidersSettings();
+  const next = normalizeAuthProvidersSettings({
+    oidc: { ...current.oidc, ...(settings.oidc ?? {}) },
+    saml: { ...current.saml, ...(settings.saml ?? {}) }
+  });
+  const now = new Date().toISOString();
+  db.prepare(
+    `UPDATE auth_providers
+       SET settings_json = @settingsJson,
+           updated_at = @updatedAt
+     WHERE id = 1`
+  ).run({
+    settingsJson: JSON.stringify(next),
+    updatedAt: now
+  });
+  return getAuthProvidersSettings();
+}
+
+export function listSilences(params?: { includeExpired?: boolean }): SilenceRow[] {
+  const includeExpired = Boolean(params?.includeExpired);
+  const rows = includeExpired
+    ? (db.prepare("SELECT * FROM silences ORDER BY updated_at DESC").all() as Array<any>)
+    : (db
+        .prepare("SELECT * FROM silences WHERE ends_at >= ? ORDER BY updated_at DESC")
+        .all(new Date().toISOString()) as Array<any>);
+  return rows.map(toSilenceRow);
+}
+
+export function listActiveSilences(atIso = new Date().toISOString()): SilenceRow[] {
+  const rows = db
+    .prepare(
+      `SELECT * FROM silences
+       WHERE enabled = 1
+         AND starts_at <= ?
+         AND ends_at >= ?
+       ORDER BY created_at DESC`
+    )
+    .all(atIso, atIso) as Array<any>;
+  return rows.map(toSilenceRow);
+}
+
+export function getSilenceById(id: string): SilenceRow | null {
+  const row = db.prepare("SELECT * FROM silences WHERE id = ?").get(id);
+  return row ? toSilenceRow(row) : null;
+}
+
+export function createSilence(input: Omit<SilenceRule, "id" | "createdAt" | "updatedAt">): SilenceRow {
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO silences (
+      id,
+      name,
+      source_type,
+      source_id,
+      source_label,
+      service_pattern,
+      environment_pattern,
+      alert_name_pattern,
+      instance_pattern,
+      severity,
+      starts_at,
+      ends_at,
+      enabled,
+      created_by,
+      created_at,
+      updated_at
+    ) VALUES (
+      @id,
+      @name,
+      @sourceType,
+      @sourceId,
+      @sourceLabel,
+      @servicePattern,
+      @environmentPattern,
+      @alertNamePattern,
+      @instancePattern,
+      @severity,
+      @startsAt,
+      @endsAt,
+      @enabled,
+      @createdBy,
+      @createdAt,
+      @updatedAt
+    )`
+  ).run({
+    id,
+    name: input.name,
+    sourceType: input.sourceType,
+    sourceId: input.sourceId ?? "",
+    sourceLabel: input.sourceLabel ?? "",
+    servicePattern: input.servicePattern ?? "",
+    environmentPattern: input.environmentPattern ?? "",
+    alertNamePattern: input.alertNamePattern ?? "",
+    instancePattern: input.instancePattern ?? "",
+    severity: input.severity ?? "Any",
+    startsAt: input.startsAt,
+    endsAt: input.endsAt,
+    enabled: input.enabled ? 1 : 0,
+    createdBy: input.createdBy,
+    createdAt: now,
+    updatedAt: now
+  });
+  return getSilenceById(id) as SilenceRow;
+}
+
+export function updateSilence(
+  id: string,
+  updates: Partial<Omit<SilenceRule, "id" | "createdAt" | "updatedAt">>
+): SilenceRow | null {
+  const current = getSilenceById(id);
+  if (!current) {
+    return null;
+  }
+  const next = {
+    ...current,
+    ...updates
+  };
+  const now = new Date().toISOString();
+  db.prepare(
+    `UPDATE silences SET
+      name = @name,
+      source_type = @sourceType,
+      source_id = @sourceId,
+      source_label = @sourceLabel,
+      service_pattern = @servicePattern,
+      environment_pattern = @environmentPattern,
+      alert_name_pattern = @alertNamePattern,
+      instance_pattern = @instancePattern,
+      severity = @severity,
+      starts_at = @startsAt,
+      ends_at = @endsAt,
+      enabled = @enabled,
+      created_by = @createdBy,
+      updated_at = @updatedAt
+     WHERE id = @id`
+  ).run({
+    id,
+    name: next.name,
+    sourceType: next.sourceType,
+    sourceId: next.sourceId ?? "",
+    sourceLabel: next.sourceLabel ?? "",
+    servicePattern: next.servicePattern ?? "",
+    environmentPattern: next.environmentPattern ?? "",
+    alertNamePattern: next.alertNamePattern ?? "",
+    instancePattern: next.instancePattern ?? "",
+    severity: next.severity ?? "Any",
+    startsAt: next.startsAt,
+    endsAt: next.endsAt,
+    enabled: next.enabled ? 1 : 0,
+    createdBy: next.createdBy ?? null,
+    updatedAt: now
+  });
+  return getSilenceById(id);
+}
+
+export function deleteSilence(id: string) {
+  db.prepare("DELETE FROM silences WHERE id = ?").run(id);
+}
+
+export function createLoginChallenge(userId: string, ttlMinutes = 10): LoginChallengeRow {
+  const token = crypto.randomUUID();
+  const createdAt = new Date().toISOString();
+  const expiresAt = Date.now() + ttlMinutes * 60 * 1000;
+  db.prepare(
+    `INSERT INTO login_challenges (token, user_id, expires_at, created_at)
+     VALUES (?, ?, ?, ?)`
+  ).run(token, userId, expiresAt, createdAt);
+  return { token, userId, expiresAt, createdAt };
+}
+
+export function consumeLoginChallenge(token: string): LoginChallengeRow | null {
+  const row = db
+    .prepare("SELECT * FROM login_challenges WHERE token = ?")
+    .get(token) as any;
+  if (!row) {
+    return null;
+  }
+  db.prepare("DELETE FROM login_challenges WHERE token = ?").run(token);
+  if (row.expires_at < Date.now()) {
+    return null;
+  }
+  return {
+    token: row.token,
+    userId: row.user_id,
+    expiresAt: Number(row.expires_at),
+    createdAt: row.created_at
+  };
+}
+
+export function createOidcState(codeVerifier: string, returnTo = "/", ttlMinutes = 10) {
+  const state = crypto.randomUUID();
+  const createdAt = new Date().toISOString();
+  const expiresAt = Date.now() + ttlMinutes * 60 * 1000;
+  db.prepare(
+    `INSERT INTO oidc_states (state, code_verifier, return_to, expires_at, created_at)
+     VALUES (?, ?, ?, ?, ?)`
+  ).run(state, codeVerifier, returnTo, expiresAt, createdAt);
+  return { state, codeVerifier, returnTo, expiresAt, createdAt };
+}
+
+export function consumeOidcState(state: string): OidcStateRow | null {
+  const row = db.prepare("SELECT * FROM oidc_states WHERE state = ?").get(state) as any;
+  if (!row) {
+    return null;
+  }
+  db.prepare("DELETE FROM oidc_states WHERE state = ?").run(state);
+  if (Number(row.expires_at) < Date.now()) {
+    return null;
+  }
+  return {
+    state: row.state,
+    codeVerifier: row.code_verifier,
+    returnTo: row.return_to ?? "/",
+    expiresAt: Number(row.expires_at),
+    createdAt: row.created_at
+  };
 }
 
 export function createSession(userId: string, ttlHours = 24 * 7) {

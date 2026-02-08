@@ -3,7 +3,6 @@ import bcrypt from "bcryptjs";
 
 export const dynamic = "force-dynamic"
 
-import { getSessionUser } from "../../../lib/auth";
 import {
   createUser,
   getUserById,
@@ -12,38 +11,37 @@ import {
   logAudit,
   updateUser
 } from "../../../lib/db";
+import { requirePermission } from "../../../lib/auth-guard";
+import { toPublicUser } from "../../../lib/public-user";
+import type { UserRole } from "../../../lib/types";
 
 export const runtime = "nodejs";
 
-function toPublicUser(user: ReturnType<typeof getUserById>) {
-  if (!user) {
-    return null;
-  }
-  return {
-    id: user.id,
-    username: user.username,
-    firstName: user.firstName,
-    lastName: user.lastName,
-    email: user.email,
-    avatarUrl: user.avatarUrl,
-    role: user.role
-  };
+function normalizeRole(role: unknown): UserRole {
+  return role === "admin" ||
+    role === "manager" ||
+    role === "operator" ||
+    role === "auditor"
+    ? role
+    : "viewer";
 }
 
 export async function GET() {
-  const user = await getSessionUser();
-  if (!user || user.role !== "admin") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const permission = await requirePermission("users.manage");
+  if (permission.response) {
+    return permission.response;
   }
+  const user = permission.user;
   const users = listUsers().map(toPublicUser);
   return NextResponse.json({ users });
 }
 
 export async function POST(request: Request) {
-  const user = await getSessionUser();
-  if (!user || user.role !== "admin") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const permission = await requirePermission("users.manage");
+  if (permission.response) {
+    return permission.response;
   }
+  const user = permission.user;
 
   const payload = (await request.json()) as {
     username: string;
@@ -52,7 +50,7 @@ export async function POST(request: Request) {
     email: string;
     avatarUrl?: string;
     password: string;
-    role: "viewer" | "admin";
+    role: UserRole;
   };
 
   if (getUserByUsername(payload.username)) {
@@ -66,7 +64,7 @@ export async function POST(request: Request) {
     email: payload.email.trim(),
     avatarUrl: payload.avatarUrl?.trim() ?? "",
     password: payload.password,
-    role: payload.role
+    role: normalizeRole(payload.role)
   });
 
   logAudit("users.create", user.id, {
@@ -79,10 +77,11 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const user = await getSessionUser();
-  if (!user || user.role !== "admin") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const permission = await requirePermission("users.manage");
+  if (permission.response) {
+    return permission.response;
   }
+  const user = permission.user;
 
   const payload = (await request.json()) as {
     id: string;
@@ -92,7 +91,7 @@ export async function PATCH(request: Request) {
     email?: string;
     avatarUrl?: string;
     password?: string;
-    role?: "viewer" | "admin";
+    role?: UserRole;
   };
 
   const existing = getUserById(payload.id);
@@ -115,7 +114,7 @@ export async function PATCH(request: Request) {
     email: payload.email?.trim(),
     avatarUrl: payload.avatarUrl?.trim(),
     passwordHash,
-    role: payload.role
+    role: payload.role ? normalizeRole(payload.role) : undefined
   });
 
   logAudit("users.update", user.id, {
@@ -127,5 +126,4 @@ export async function PATCH(request: Request) {
 
   return NextResponse.json({ user: toPublicUser(updated) });
 }
-
 

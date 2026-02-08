@@ -1,5 +1,6 @@
 export type AlertSource = "Prometheus" | "Zabbix" | "Kuma";
 export type AlertSeverity = "critical" | "warning" | "info";
+export type UserRole = "viewer" | "operator" | "manager" | "auditor" | "admin";
 
 export interface ThemePalette {
   base: string;
@@ -58,18 +59,72 @@ export interface AuditLogEntry {
 export interface Alert {
   id: string;
   source: AlertSource;
+  sourceId?: string;
   sourceLabel?: string;
   name: string;
   severity: AlertSeverity;
   message: string;
   timestamp: string;
   instance?: string;
+  service?: string;
+  environment?: string;
+  fingerprint?: string;
+  groupKey?: string;
+  groupSize?: number;
+  groupedAlertIds?: string[];
   ackStatus?: "active" | "acknowledged" | "resolved";
   ackNote?: string;
   ackUpdatedAt?: string;
   ackUpdatedBy?: string;
   acknowledgedAt?: string;
   resolvedAt?: string;
+}
+
+export interface SilenceRule {
+  id: string;
+  name: string;
+  sourceType: AlertSource | "Any";
+  sourceId?: string;
+  sourceLabel?: string;
+  servicePattern?: string;
+  environmentPattern?: string;
+  alertNamePattern?: string;
+  instancePattern?: string;
+  severity?: AlertSeverity | "Any";
+  startsAt: string;
+  endsAt: string;
+  enabled: boolean;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OidcProviderSettings {
+  enabled: boolean;
+  issuerUrl: string;
+  authorizationEndpoint: string;
+  tokenEndpoint: string;
+  userinfoEndpoint: string;
+  clientId: string;
+  clientSecret: string;
+  scopes: string;
+  usernameClaim: string;
+  emailClaim: string;
+  nameClaim: string;
+  autoProvision: boolean;
+}
+
+export interface SamlProviderSettings {
+  enabled: boolean;
+  entryPoint: string;
+  issuer: string;
+  cert: string;
+  autoProvision: boolean;
+}
+
+export interface AuthProvidersSettings {
+  oidc: OidcProviderSettings;
+  saml: SamlProviderSettings;
 }
 
 export interface DataSourceHealth {
@@ -122,5 +177,7 @@ export interface User {
   lastName: string;
   email: string;
   avatarUrl: string;
-  role: "viewer" | "admin";
+  role: UserRole;
+  permissions?: string[];
+  twoFactorEnabled?: boolean;
 }

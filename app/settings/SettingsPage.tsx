@@ -7,18 +7,24 @@ import { useTheme } from "next-themes";
 import Sidebar from "../../components/Sidebar";
 import { applyAppearanceToDocument, defaultAppearance } from "../../lib/appearance";
 import type {
+  AuthProvidersSettings,
   KumaSource,
   PrometheusSource,
   Settings,
+  SilenceRule,
   ThemePalette,
   User,
+  UserRole,
   ZabbixSource
 } from "../../lib/types";
+import { hasPermission } from "../../lib/rbac";
 import type { AuditLogEntry, TestState } from "./types";
 import DataSourcesSection from "./components/DataSourcesSection";
 import AppearanceSection from "./components/AppearanceSection";
 import AuditSection from "./components/AuditSection";
 import UsersSection from "./components/UsersSection";
+import SilencesSection from "./components/SilencesSection";
+import AuthProvidersSection from "./components/AuthProvidersSection";
 
 const emptySettings: Settings = {
   prometheusSources: [],
@@ -32,7 +38,33 @@ type SettingsResponse = { settings: Settings; canEdit: boolean };
 type UserResponse = { user: User };
 type UsersResponse = { users: User[] };
 type AuditLogResponse = { logs: AuditLogEntry[]; total: number };
-type TabKey = "data" | "appearance" | "users" | "audit";
+type SilencesResponse = { silences: SilenceRule[] };
+type AuthProvidersResponse = { settings: AuthProvidersSettings };
+type TabKey = "data" | "silences" | "appearance" | "users" | "audit" | "access";
+
+const defaultAuthProviders: AuthProvidersSettings = {
+  oidc: {
+    enabled: false,
+    issuerUrl: "",
+    authorizationEndpoint: "",
+    tokenEndpoint: "",
+    userinfoEndpoint: "",
+    clientId: "",
+    clientSecret: "",
+    scopes: "openid profile email",
+    usernameClaim: "preferred_username",
+    emailClaim: "email",
+    nameClaim: "name",
+    autoProvision: true
+  },
+  saml: {
+    enabled: false,
+    entryPoint: "",
+    issuer: "",
+    cert: "",
+    autoProvision: false
+  }
+};
 
 function createId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -79,6 +111,24 @@ export default function SettingsPage() {
   const [settingsDraft, setSettingsDraft] = useState<Settings>(emptySettings);
   const [canEditSettings, setCanEditSettings] = useState(false);
   const [settingsStatus, setSettingsStatus] = useState<string | null>(null);
+  const [silences, setSilences] = useState<SilenceRule[]>([]);
+  const [silenceStatus, setSilenceStatus] = useState<string | null>(null);
+  const [silenceDraft, setSilenceDraft] = useState({
+    name: "",
+    sourceType: "Any" as "Any" | "Prometheus" | "Zabbix" | "Kuma",
+    sourceId: "",
+    sourceLabel: "",
+    servicePattern: "",
+    environmentPattern: "",
+    alertNamePattern: "",
+    instancePattern: "",
+    severity: "Any" as "Any" | "critical" | "warning" | "info",
+    startsAt: "",
+    endsAt: "",
+    enabled: true
+  });
+  const [authDraft, setAuthDraft] = useState<AuthProvidersSettings>(defaultAuthProviders);
+  const [authStatus, setAuthStatus] = useState<string | null>(null);
   const [profileDraft, setProfileDraft] = useState({
     firstName: "",
     lastName: "",
@@ -88,6 +138,9 @@ export default function SettingsPage() {
     password: ""
   });
   const [profileStatus, setProfileStatus] = useState<string | null>(null);
+  const [twoFactorStatus, setTwoFactorStatus] = useState<string | null>(null);
+  const [twoFactorSetupSecret, setTwoFactorSetupSecret] = useState<string | null>(null);
+  const [twoFactorCode, setTwoFactorCode] = useState("");
   const [users, setUsers] = useState<User[]>([]);
   const [userStatus, setUserStatus] = useState<string | null>(null);
   const [userUpdateStatus, setUserUpdateStatus] = useState<string | null>(null);
@@ -106,7 +159,7 @@ export default function SettingsPage() {
     lastName: "",
     email: "",
     password: "",
-    role: "viewer" as "viewer" | "admin"
+    role: "viewer" as UserRole
   });
   const [isLoading, setIsLoading] = useState(true);
 
@@ -117,33 +170,51 @@ export default function SettingsPage() {
   useEffect(() => {
     if (user) {
       void loadSettings();
-      if (user.role === "admin") {
+      if (hasPermission(user, "users.manage")) {
         void loadUsers();
+      }
+      if (hasPermission(user, "silences.read")) {
+        void loadSilences();
+      }
+      if (hasPermission(user, "settings.write")) {
+        void loadAuthProviders();
       }
     }
   }, [user]);
 
-  const isAdmin = useMemo(() => user?.role === "admin", [user]);
+  const canViewSettings = useMemo(() => hasPermission(user, "settings.read"), [user]);
+  const canManageSilences = useMemo(() => hasPermission(user, "silences.write"), [user]);
+  const canReadSilences = useMemo(() => hasPermission(user, "silences.read"), [user]);
+  const canManageUsers = useMemo(() => hasPermission(user, "users.manage"), [user]);
+  const canReadAudit = useMemo(() => hasPermission(user, "audit.read"), [user]);
+  const canConfigureAuth = useMemo(() => hasPermission(user, "settings.write"), [user]);
   const auditPageCount = Math.max(1, Math.ceil(auditTotal / auditPageSize));
   const settingsTabItems = useMemo(() => {
-    const items = [
-      { value: "data", label: "Data Sources" },
-      { value: "users", label: "Users" }
-    ];
-    if (isAdmin) {
-      items.splice(1, 0, { value: "appearance", label: "Appearance" });
+    const items: Array<{ value: TabKey; label: string }> = [{ value: "users", label: "Users" }];
+    if (canViewSettings) {
+      items.unshift({ value: "data", label: "Data Sources" });
+      items.push({ value: "appearance", label: "Appearance" });
     }
-    if (isAdmin) {
+    if (canReadSilences) {
+      items.push({ value: "silences", label: "Silences" });
+    }
+    if (canReadAudit) {
       items.push({ value: "audit", label: "Audit Log" });
     }
+    if (canConfigureAuth) {
+      items.push({ value: "access", label: "Access" });
+    }
     return items;
-  }, [isAdmin]);
+  }, [canConfigureAuth, canReadAudit, canReadSilences, canViewSettings]);
 
   useEffect(() => {
-    if (!isAdmin && activeTab === "appearance") {
-      setActiveTab("data");
+    if (settingsTabItems.length === 0) {
+      return;
     }
-  }, [activeTab, isAdmin]);
+    if (!settingsTabItems.some((entry) => entry.value === activeTab)) {
+      setActiveTab(settingsTabItems[0].value);
+    }
+  }, [activeTab, settingsTabItems]);
 
   useEffect(() => {
     if (settingsDraft.appearance) {
@@ -152,16 +223,16 @@ export default function SettingsPage() {
   }, [settingsDraft.appearance]);
 
   useEffect(() => {
-    if (activeTab === "audit" && isAdmin) {
+    if (activeTab === "audit" && canReadAudit) {
       setAuditPage(1);
     }
-  }, [activeTab, isAdmin]);
+  }, [activeTab, canReadAudit]);
 
   useEffect(() => {
-    if (activeTab === "audit" && isAdmin) {
+    if (activeTab === "audit" && canReadAudit) {
       void loadAuditLogs();
     }
-  }, [activeTab, isAdmin, auditPage, auditPageSize]);
+  }, [activeTab, canReadAudit, auditPage, auditPageSize]);
 
   useEffect(() => {
     if (auditPage > auditPageCount) {
@@ -264,7 +335,7 @@ export default function SettingsPage() {
   }
 
   async function loadUsers(nextEditingId?: string | null) {
-    if (!user || user.role !== "admin") {
+    if (!user || !hasPermission(user, "users.manage")) {
       return;
     }
     const response = await fetch("/api/users");
@@ -279,7 +350,7 @@ export default function SettingsPage() {
   }
 
   async function loadAuditLogs() {
-    if (!isAdmin) {
+    if (!canReadAudit) {
       return;
     }
     setIsLoadingAudit(true);
@@ -297,6 +368,9 @@ export default function SettingsPage() {
   }
 
   async function createNewUser() {
+    if (!canManageUsers) {
+      return;
+    }
     setUserStatus(null);
     const response = await fetch("/api/users", {
       method: "POST",
@@ -325,6 +399,9 @@ export default function SettingsPage() {
   }
 
   async function saveUserDetails(entry: User) {
+    if (!canManageUsers) {
+      return;
+    }
     setUserUpdateStatus(null);
     const password = userPasswordDrafts[entry.id]?.trim();
     const response = await fetch("/api/users", {
@@ -482,6 +559,194 @@ export default function SettingsPage() {
     }));
   }
 
+  async function loadSilences() {
+    if (!canReadSilences) {
+      return;
+    }
+    const response = await fetch("/api/silences");
+    if (!response.ok) {
+      setSilenceStatus("Failed to load silences.");
+      return;
+    }
+    const data = (await response.json()) as SilencesResponse;
+    setSilences(data.silences ?? []);
+    setSilenceStatus(null);
+  }
+
+  async function createSilenceEntry() {
+    if (!canManageSilences) {
+      return;
+    }
+    const start = silenceDraft.startsAt || new Date().toISOString().slice(0, 16);
+    const end =
+      silenceDraft.endsAt ||
+      new Date(Date.now() + 60 * 60 * 1000).toISOString().slice(0, 16);
+    const response = await fetch("/api/silences", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...silenceDraft,
+        startsAt: start,
+        endsAt: end
+      })
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      setSilenceStatus(data.error ?? "Failed to create silence.");
+      return;
+    }
+    setSilenceStatus("Silence created.");
+    setSilenceDraft({
+      name: "",
+      sourceType: "Any",
+      sourceId: "",
+      sourceLabel: "",
+      servicePattern: "",
+      environmentPattern: "",
+      alertNamePattern: "",
+      instancePattern: "",
+      severity: "Any",
+      startsAt: "",
+      endsAt: "",
+      enabled: true
+    });
+    await loadSilences();
+  }
+
+  async function toggleSilenceState(silence: SilenceRule, enabled: boolean) {
+    if (!canManageSilences) {
+      return;
+    }
+    const response = await fetch("/api/silences", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: silence.id, enabled })
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      setSilenceStatus(data.error ?? "Failed to update silence.");
+      return;
+    }
+    await loadSilences();
+  }
+
+  async function deleteSilenceEntry(id: string) {
+    if (!canManageSilences) {
+      return;
+    }
+    const response = await fetch("/api/silences", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id })
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      setSilenceStatus(data.error ?? "Failed to delete silence.");
+      return;
+    }
+    await loadSilences();
+  }
+
+  async function loadAuthProviders() {
+    if (!canConfigureAuth) {
+      return;
+    }
+    const response = await fetch("/api/settings/auth");
+    if (!response.ok) {
+      setAuthStatus("Failed to load auth providers.");
+      return;
+    }
+    const data = (await response.json()) as AuthProvidersResponse;
+    setAuthDraft(data.settings ?? defaultAuthProviders);
+    setAuthStatus(null);
+  }
+
+  async function saveAuthProviders() {
+    if (!canConfigureAuth) {
+      return;
+    }
+    const response = await fetch("/api/settings/auth", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(authDraft)
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      setAuthStatus(data.error ?? "Failed to save auth providers.");
+      return;
+    }
+    setAuthDraft(data.settings ?? defaultAuthProviders);
+    setAuthStatus("Auth providers saved.");
+  }
+
+  async function startTwoFactorSetup() {
+    setTwoFactorStatus(null);
+    const response = await fetch("/api/auth/2fa/setup");
+    const data = await response.json();
+    if (!response.ok) {
+      setTwoFactorStatus(data.error ?? "Failed to start 2FA setup.");
+      return;
+    }
+    setTwoFactorSetupSecret(data.secret ?? null);
+    setTwoFactorStatus("Add the key to your authenticator app, then enter a code.");
+    setTwoFactorCode("");
+  }
+
+  async function confirmTwoFactorSetup() {
+    const response = await fetch("/api/auth/2fa/setup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: twoFactorCode })
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      setTwoFactorStatus(data.error ?? "Failed to enable 2FA.");
+      return;
+    }
+    setTwoFactorSetupSecret(null);
+    setTwoFactorCode("");
+    setTwoFactorStatus("Two-factor authentication enabled.");
+    setUser(data.user);
+  }
+
+  async function disableTwoFactorForProfile() {
+    const response = await fetch("/api/auth/2fa/disable", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: twoFactorCode })
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      setTwoFactorStatus(data.error ?? "Failed to disable 2FA.");
+      return;
+    }
+    setTwoFactorSetupSecret(null);
+    setTwoFactorCode("");
+    setTwoFactorStatus("Two-factor authentication disabled.");
+    setUser(data.user);
+  }
+
+  const silenceSourceOptions = useMemo(
+    () => [
+      ...settingsDraft.prometheusSources.map((source) => ({
+        id: source.id,
+        type: "Prometheus" as const,
+        label: source.name || source.url
+      })),
+      ...settingsDraft.zabbixSources.map((source) => ({
+        id: source.id,
+        type: "Zabbix" as const,
+        label: source.name || source.url
+      })),
+      ...settingsDraft.kumaSources.map((source) => ({
+        id: source.id,
+        type: "Kuma" as const,
+        label: source.name || source.baseUrl
+      }))
+    ],
+    [settingsDraft.kumaSources, settingsDraft.prometheusSources, settingsDraft.zabbixSources]
+  );
+
   if (isLoading || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4 sm:px-6">
@@ -505,7 +770,7 @@ export default function SettingsPage() {
       />
       <div className="flex-1 min-w-0">
         <main className="mx-auto max-w-6xl px-5 py-8 sm:px-6 sm:py-10">
-          {activeTab === "data" ? (
+          {activeTab === "data" && canViewSettings ? (
             <DataSourcesSection
               settingsDraft={settingsDraft}
               setSettingsDraft={setSettingsDraft}
@@ -525,13 +790,28 @@ export default function SettingsPage() {
             />
           ) : null}
 
-          {activeTab === "appearance" ? (
+          {activeTab === "silences" && canReadSilences ? (
+            <SilencesSection
+              canEditSilences={canManageSilences}
+              silences={silences}
+              silenceStatus={silenceStatus}
+              silenceDraft={silenceDraft}
+              setSilenceDraft={setSilenceDraft}
+              sourceOptions={silenceSourceOptions}
+              onCreateSilence={createSilenceEntry}
+              onToggleSilence={toggleSilenceState}
+              onDeleteSilence={deleteSilenceEntry}
+              onRefresh={() => void loadSilences()}
+            />
+          ) : null}
+
+          {activeTab === "appearance" && canViewSettings ? (
             <AppearanceSection
               settingsDraft={settingsDraft}
               setSettingsDraft={setSettingsDraft}
               canEditSettings={canEditSettings}
               settingsStatus={settingsStatus}
-              isAdmin={Boolean(isAdmin)}
+              isAdmin={canConfigureAuth}
               onSave={saveSettings}
               onUpdateAppearance={updateAppearance}
               onUpdateBranding={updateBranding}
@@ -541,7 +821,7 @@ export default function SettingsPage() {
             />
           ) : null}
 
-          {activeTab === "audit" ? (
+          {activeTab === "audit" && canReadAudit ? (
             <AuditSection
               auditLogs={auditLogs}
               auditStatus={auditStatus}
@@ -563,13 +843,30 @@ export default function SettingsPage() {
             />
           ) : null}
 
+          {activeTab === "access" && canConfigureAuth ? (
+            <AuthProvidersSection
+              authDraft={authDraft}
+              setAuthDraft={setAuthDraft}
+              authStatus={authStatus}
+              onSave={saveAuthProviders}
+            />
+          ) : null}
+
           {activeTab === "users" ? (
             <UsersSection
-              isAdmin={Boolean(isAdmin)}
+              isAdmin={canManageUsers}
               profileDraft={profileDraft}
               setProfileDraft={setProfileDraft}
               profileStatus={profileStatus}
               onSaveProfile={saveProfile}
+              twoFactorEnabled={Boolean(user.twoFactorEnabled)}
+              twoFactorStatus={twoFactorStatus}
+              twoFactorCode={twoFactorCode}
+              setTwoFactorCode={setTwoFactorCode}
+              twoFactorSetupSecret={twoFactorSetupSecret}
+              onStartTwoFactorSetup={startTwoFactorSetup}
+              onConfirmTwoFactorSetup={confirmTwoFactorSetup}
+              onDisableTwoFactor={disableTwoFactorForProfile}
               newUser={newUser}
               setNewUser={setNewUser}
               onCreateUser={createNewUser}

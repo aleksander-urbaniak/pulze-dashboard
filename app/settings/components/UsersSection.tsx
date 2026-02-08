@@ -1,4 +1,5 @@
 import type { User } from "../../../lib/types";
+import type { UserRole } from "../../../lib/types";
 
 type ProfileDraft = {
   firstName: string;
@@ -15,7 +16,7 @@ type NewUserDraft = {
   lastName: string;
   email: string;
   password: string;
-  role: "viewer" | "admin";
+  role: UserRole;
 };
 
 type UsersSectionProps = {
@@ -24,6 +25,14 @@ type UsersSectionProps = {
   setProfileDraft: React.Dispatch<React.SetStateAction<ProfileDraft>>;
   profileStatus: string | null;
   onSaveProfile: () => void;
+  twoFactorEnabled: boolean;
+  twoFactorStatus: string | null;
+  twoFactorCode: string;
+  setTwoFactorCode: React.Dispatch<React.SetStateAction<string>>;
+  twoFactorSetupSecret: string | null;
+  onStartTwoFactorSetup: () => void;
+  onConfirmTwoFactorSetup: () => void;
+  onDisableTwoFactor: () => void;
   newUser: NewUserDraft;
   setNewUser: React.Dispatch<React.SetStateAction<NewUserDraft>>;
   onCreateUser: () => void;
@@ -45,6 +54,14 @@ export default function UsersSection({
   setProfileDraft,
   profileStatus,
   onSaveProfile,
+  twoFactorEnabled,
+  twoFactorStatus,
+  twoFactorCode,
+  setTwoFactorCode,
+  twoFactorSetupSecret,
+  onStartTwoFactorSetup,
+  onConfirmTwoFactorSetup,
+  onDisableTwoFactor,
   newUser,
   setNewUser,
   onCreateUser,
@@ -110,12 +127,73 @@ export default function UsersSection({
           >
             Update Profile
           </button>
+          <div className="rounded-2xl border border-border bg-base/40 p-4">
+            <p className="text-xs uppercase tracking-[0.3em] text-muted">Security</p>
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <p className="text-sm">Two-factor authentication</p>
+              <span className="rounded-full border border-border px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] text-muted">
+                {twoFactorEnabled ? "Enabled" : "Disabled"}
+              </span>
+            </div>
+            {twoFactorStatus ? <p className="mt-2 text-xs text-muted">{twoFactorStatus}</p> : null}
+            {twoFactorSetupSecret ? (
+              <div className="mt-3 space-y-2">
+                <p className="text-xs text-muted">
+                  Add this key in your authenticator app:
+                </p>
+                <p className="rounded-lg border border-border bg-base/60 px-3 py-2 font-mono text-xs">
+                  {twoFactorSetupSecret}
+                </p>
+                <input
+                  value={twoFactorCode}
+                  onChange={(event) => setTwoFactorCode(event.target.value)}
+                  placeholder="Enter 6-digit code"
+                  className="w-full rounded-xl border border-border bg-base/60 px-4 py-2 text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={onConfirmTwoFactorSetup}
+                  className="w-full rounded-xl border border-border py-2 text-sm font-semibold"
+                >
+                  Confirm 2FA Setup
+                </button>
+              </div>
+            ) : (
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {!twoFactorEnabled ? (
+                  <button
+                    type="button"
+                    onClick={onStartTwoFactorSetup}
+                    className="rounded-xl border border-border px-3 py-2 text-xs uppercase tracking-[0.2em]"
+                  >
+                    Enable 2FA
+                  </button>
+                ) : (
+                  <>
+                    <input
+                      value={twoFactorCode}
+                      onChange={(event) => setTwoFactorCode(event.target.value)}
+                      placeholder="6-digit code"
+                      className="rounded-xl border border-border bg-base/60 px-3 py-2 text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={onDisableTwoFactor}
+                      className="rounded-xl border border-border px-3 py-2 text-xs uppercase tracking-[0.2em]"
+                    >
+                      Disable 2FA
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
       {!isAdmin ? (
         <div className="rounded-3xl border border-border bg-surface/90 p-8 text-sm text-muted shadow-card">
-          Only administrators can manage users.
+          Your role does not include user management.
         </div>
       ) : (
         <>
@@ -158,11 +236,14 @@ export default function UsersSection({
               <select
                 value={newUser.role}
                 onChange={(event) =>
-                  setNewUser({ ...newUser, role: event.target.value as "viewer" | "admin" })
+                  setNewUser({ ...newUser, role: event.target.value as UserRole })
                 }
                 className="rounded-xl border border-border bg-base/60 px-4 py-2 text-sm"
               >
                 <option value="viewer">Viewer</option>
+                <option value="operator">Operator</option>
+                <option value="manager">Manager</option>
+                <option value="auditor">Auditor</option>
                 <option value="admin">Admin</option>
               </select>
             </div>
@@ -266,16 +347,19 @@ export default function UsersSection({
                           />
                           <select
                             value={entry.role}
-                            onChange={(event) =>
-                              updateUserDraft(entry.id, {
-                                role: event.target.value as "viewer" | "admin"
-                              })
-                            }
-                            className="rounded-xl border border-border bg-base/60 px-4 py-2 text-sm"
-                          >
-                            <option value="viewer">Viewer</option>
-                            <option value="admin">Admin</option>
-                          </select>
+                              onChange={(event) =>
+                                updateUserDraft(entry.id, {
+                                  role: event.target.value as UserRole
+                                })
+                              }
+                              className="rounded-xl border border-border bg-base/60 px-4 py-2 text-sm"
+                            >
+                              <option value="viewer">Viewer</option>
+                              <option value="operator">Operator</option>
+                              <option value="manager">Manager</option>
+                              <option value="auditor">Auditor</option>
+                              <option value="admin">Admin</option>
+                            </select>
                         </div>
                         <div className="flex flex-wrap items-center gap-2">
                           <button

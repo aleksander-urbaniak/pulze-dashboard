@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic"
 
+import { requirePermission } from "../../../../lib/auth-guard";
 import { fetchKumaAlerts, fetchPrometheusAlerts, fetchZabbixAlerts } from "../../../../lib/alerts";
 import { buildAnalyticsSummary } from "../../../../lib/analytics";
 import { getSettings } from "../../../../lib/db";
@@ -19,6 +20,10 @@ type SummaryCache = {
 const globalCache = globalThis as { analyticsSummaryCache?: SummaryCache };
 
 export async function GET() {
+  const permission = await requirePermission("analytics.read");
+  if (permission.response) {
+    return permission.response;
+  }
   const cached = globalCache.analyticsSummaryCache;
   if (cached && cached.expiresAt > Date.now()) {
     return NextResponse.json(
@@ -53,5 +58,4 @@ export async function GET() {
     { headers: { "Cache-Control": "no-store" } }
   );
 }
-
 

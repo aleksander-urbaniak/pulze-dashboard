@@ -16,6 +16,7 @@ export type AlertsSplitViewProps = {
   onToggleSelection: (id: string) => void;
   onUpdateAlertState: (alertId: string, status: "active" | "acknowledged" | "resolved") => void;
   getAlertSourceUrl: (alert: Alert) => string | null;
+  canAcknowledge: boolean;
 };
 
 export default function AlertsSplitView({
@@ -31,7 +32,8 @@ export default function AlertsSplitView({
   onSelectAlert,
   onToggleSelection,
   onUpdateAlertState,
-  getAlertSourceUrl
+  getAlertSourceUrl,
+  canAcknowledge
 }: AlertsSplitViewProps) {
   return (
     <div className="mt-4 grid gap-6 lg:grid-cols-[1fr_1.2fr]">
@@ -97,6 +99,11 @@ export default function AlertsSplitView({
                         {isSelected ? "x" : ""}
                       </button>
                       <span className="text-sm font-semibold">
+                        {alert.groupSize && alert.groupSize > 1 ? (
+                          <span className="mr-2 rounded-full border border-border bg-base/80 px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] text-muted">
+                            x{alert.groupSize}
+                          </span>
+                        ) : null}
                         {alertSourceUrl ? (
                           <a
                             href={alertSourceUrl}
@@ -189,6 +196,7 @@ export default function AlertsSplitView({
                   <button
                     type="button"
                     onClick={() => onUpdateAlertState(selectedAlert.id, "acknowledged")}
+                    disabled={!canAcknowledge}
                     className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em]"
                   >
                     Acknowledge
@@ -196,6 +204,7 @@ export default function AlertsSplitView({
                   <button
                     type="button"
                     onClick={() => onUpdateAlertState(selectedAlert.id, "resolved")}
+                    disabled={!canAcknowledge}
                     className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em]"
                   >
                     Resolve
@@ -204,6 +213,7 @@ export default function AlertsSplitView({
                     <button
                       type="button"
                       onClick={() => onUpdateAlertState(selectedAlert.id, "active")}
+                      disabled={!canAcknowledge}
                       className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em] text-muted"
                     >
                       Reopen
@@ -222,6 +232,7 @@ export default function AlertsSplitView({
                 <button
                   type="button"
                   onClick={() => onUpdateAlertState(selectedAlert.id, selectedAlertStatus)}
+                  disabled={!canAcknowledge}
                   className="rounded-full border border-border px-4 py-2 text-xs uppercase tracking-[0.2em]"
                 >
                   Save Note

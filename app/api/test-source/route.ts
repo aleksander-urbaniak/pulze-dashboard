@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic"
 
-import { getSessionUser } from "../../../lib/auth";
+import { requirePermission } from "../../../lib/auth-guard";
 import { getSettings } from "../../../lib/db";
 import {
   fetchKumaTestLine,
@@ -38,9 +38,9 @@ function resolveSource<T extends { id?: string }>(
 }
 
 export async function POST(request: Request) {
-  const user = await getSessionUser();
-  if (!user || user.role !== "admin") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const permission = await requirePermission("settings.write");
+  if (permission.response) {
+    return permission.response;
   }
 
   const payload = (await request.json()) as Partial<TestPayload>;
@@ -130,5 +130,4 @@ export async function POST(request: Request) {
     );
   }
 }
-
 

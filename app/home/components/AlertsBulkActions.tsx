@@ -6,6 +6,7 @@ type AlertsBulkActionsProps = {
   onSelectAll: () => void;
   onClearSelection: () => void;
   onExportAlerts: (alerts: Alert[]) => void;
+  canAcknowledge: boolean;
   onBulkUpdate: (status: "acknowledged" | "resolved") => void;
 };
 
@@ -15,6 +16,7 @@ export default function AlertsBulkActions({
   onSelectAll,
   onClearSelection,
   onExportAlerts,
+  canAcknowledge,
   onBulkUpdate
 }: AlertsBulkActionsProps) {
   if (filteredAlerts.length === 0) {
@@ -61,7 +63,7 @@ export default function AlertsBulkActions({
         </button>
         <button
           type="button"
-          disabled={!hasSelection}
+          disabled={!hasSelection || !canAcknowledge}
           onClick={() => onBulkUpdate("acknowledged")}
           className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em] disabled:opacity-50"
         >
@@ -69,7 +71,7 @@ export default function AlertsBulkActions({
         </button>
         <button
           type="button"
-          disabled={!hasSelection}
+          disabled={!hasSelection || !canAcknowledge}
           onClick={() => onBulkUpdate("resolved")}
           className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em] disabled:opacity-50"
         >

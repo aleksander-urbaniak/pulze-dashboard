@@ -2,15 +2,15 @@ import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic"
 
-import { getSessionUser } from "../../../lib/auth";
 import { countAuditLogs, listAuditLogs } from "../../../lib/db";
+import { requirePermission } from "../../../lib/auth-guard";
 
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
-  const user = await getSessionUser();
-  if (!user || user.role !== "admin") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const permission = await requirePermission("audit.read");
+  if (permission.response) {
+    return permission.response;
   }
 
   const url = new URL(request.url);
@@ -25,5 +25,4 @@ export async function GET(request: Request) {
   const logs = listAuditLogs(pageSize, offset);
   return NextResponse.json({ logs, total });
 }
-
 

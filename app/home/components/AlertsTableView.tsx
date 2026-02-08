@@ -15,6 +15,7 @@ type AlertsTableViewProps = {
   onToggleSelection: (id: string) => void;
   onUpdateAlertState: (alertId: string, status: "active" | "acknowledged" | "resolved") => void;
   getAlertSourceUrl: (alert: Alert) => string | null;
+  canAcknowledge: boolean;
 };
 
 export default function AlertsTableView({
@@ -27,7 +28,8 @@ export default function AlertsTableView({
   onToggleExpanded,
   onToggleSelection,
   onUpdateAlertState,
-  getAlertSourceUrl
+  getAlertSourceUrl,
+  canAcknowledge
 }: AlertsTableViewProps) {
   return (
     <div className="mt-4 overflow-x-auto rounded-2xl border border-border bg-surface/90 shadow-card">
@@ -126,6 +128,11 @@ export default function AlertsTableView({
                     </td>
                     <td className="px-4 py-3 text-muted break-words">{alert.instance || "-"}</td>
                     <td className="px-4 py-3 break-words">
+                      {alert.groupSize && alert.groupSize > 1 ? (
+                        <span className="mr-2 rounded-full border border-border bg-base/80 px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] text-muted">
+                          x{alert.groupSize}
+                        </span>
+                      ) : null}
                       {alertSourceUrl ? (
                         <a
                           href={alertSourceUrl}
@@ -162,6 +169,7 @@ export default function AlertsTableView({
                               <button
                                 type="button"
                                 onClick={() => onUpdateAlertState(alert.id, "acknowledged")}
+                                disabled={!canAcknowledge}
                                 className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em]"
                               >
                                 Acknowledge
@@ -169,6 +177,7 @@ export default function AlertsTableView({
                               <button
                                 type="button"
                                 onClick={() => onUpdateAlertState(alert.id, "resolved")}
+                                disabled={!canAcknowledge}
                                 className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em]"
                               >
                                 Resolve
@@ -177,6 +186,7 @@ export default function AlertsTableView({
                                 <button
                                   type="button"
                                   onClick={() => onUpdateAlertState(alert.id, "active")}
+                                  disabled={!canAcknowledge}
                                   className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em] text-muted"
                                 >
                                   Reopen
@@ -195,6 +205,7 @@ export default function AlertsTableView({
                             <button
                               type="button"
                               onClick={() => onUpdateAlertState(alert.id, alertStatus)}
+                              disabled={!canAcknowledge}
                               className="rounded-full border border-border px-4 py-2 text-xs uppercase tracking-[0.2em]"
                             >
                               Save Note

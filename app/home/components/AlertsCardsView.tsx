@@ -15,6 +15,7 @@ type AlertsCardsViewProps = {
   onToggleSelection: (id: string) => void;
   onUpdateAlertState: (alertId: string, status: "active" | "acknowledged" | "resolved") => void;
   getAlertSourceUrl: (alert: Alert) => string | null;
+  canAcknowledge: boolean;
 };
 
 export default function AlertsCardsView({
@@ -28,7 +29,8 @@ export default function AlertsCardsView({
   onCloseExpanded,
   onToggleSelection,
   onUpdateAlertState,
-  getAlertSourceUrl
+  getAlertSourceUrl,
+  canAcknowledge
 }: AlertsCardsViewProps) {
   return (
     <div className="mt-4">
@@ -98,6 +100,11 @@ export default function AlertsCardsView({
                 <span className="absolute right-4 top-4 max-w-[60%] truncate rounded-full bg-accentSoft px-3 py-1 text-xs font-semibold text-accent">
                   {instanceLabel}
                 </span>
+                {alert.groupSize && alert.groupSize > 1 ? (
+                  <span className="absolute left-12 top-4 rounded-full border border-border bg-base/80 px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] text-muted">
+                    x{alert.groupSize}
+                  </span>
+                ) : null}
                 <p className={clsx("text-xs uppercase tracking-[0.3em] text-muted", styles.cardSeverityLabel)}>
                   {alert.severity}
                 </p>
@@ -153,6 +160,7 @@ export default function AlertsCardsView({
                         <button
                           type="button"
                           onClick={() => onUpdateAlertState(alert.id, "acknowledged")}
+                          disabled={!canAcknowledge}
                           className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em]"
                         >
                           Acknowledge
@@ -160,6 +168,7 @@ export default function AlertsCardsView({
                         <button
                           type="button"
                           onClick={() => onUpdateAlertState(alert.id, "resolved")}
+                          disabled={!canAcknowledge}
                           className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em]"
                         >
                           Resolve
@@ -168,6 +177,7 @@ export default function AlertsCardsView({
                           <button
                             type="button"
                             onClick={() => onUpdateAlertState(alert.id, "active")}
+                            disabled={!canAcknowledge}
                             className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em] text-muted"
                           >
                             Reopen
@@ -186,6 +196,7 @@ export default function AlertsCardsView({
                       <button
                         type="button"
                         onClick={() => onUpdateAlertState(alert.id, alertStatus)}
+                        disabled={!canAcknowledge}
                         className="rounded-full border border-border px-4 py-2 text-xs uppercase tracking-[0.2em]"
                       >
                         Save Note
