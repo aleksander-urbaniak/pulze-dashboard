@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+export const dynamic = "force-dynamic"
+
 import { createSession, createUser, countUsers, logAudit } from "../../../../lib/db";
 import { toPublicUser } from "../../../../lib/public-user";
 
@@ -50,4 +52,5 @@ export async function POST(request: Request) {
 
   return response;
 }
+
 
