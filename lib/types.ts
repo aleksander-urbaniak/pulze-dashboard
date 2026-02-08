@@ -80,25 +80,6 @@ export interface Alert {
   resolvedAt?: string;
 }
 
-export interface SilenceRule {
-  id: string;
-  name: string;
-  sourceType: AlertSource | "Any";
-  sourceId?: string;
-  sourceLabel?: string;
-  servicePattern?: string;
-  environmentPattern?: string;
-  alertNamePattern?: string;
-  instancePattern?: string;
-  severity?: AlertSeverity | "Any";
-  startsAt: string;
-  endsAt: string;
-  enabled: boolean;
-  createdBy: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export interface OidcProviderSettings {
   enabled: boolean;
   issuerUrl: string;
@@ -116,8 +97,18 @@ export interface OidcProviderSettings {
 
 export interface SamlProviderSettings {
   enabled: boolean;
+  idpIssuer: string;
+  ssoUrlPost: string;
+  ssoUrlRedirect: string;
+  ssoUrlIdpInitiated: string;
+  sloUrlPost: string;
+  sloUrlRedirect: string;
+  usernameAttribute: string;
+  // Legacy single entry point; still read for backward compatibility.
   entryPoint: string;
+  // Service Provider issuer/entity ID.
   issuer: string;
+  spNameIdFormat: string;
   cert: string;
   autoProvision: boolean;
 }

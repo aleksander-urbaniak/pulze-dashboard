@@ -13,6 +13,7 @@ function maskSecrets(settings: AuthProvidersSettings) {
     ...settings,
     oidc: {
       ...settings.oidc,
+      enabled: false,
       clientSecret: settings.oidc.clientSecret ? "********" : ""
     }
   };
@@ -34,20 +35,13 @@ export async function PUT(request: Request) {
   }
   const user = permission.user;
   const payload = (await request.json()) as Partial<AuthProvidersSettings>;
-  const current = getAuthProvidersSettings();
-  const oidcPayload: Partial<AuthProvidersSettings["oidc"]> = payload.oidc ?? {};
   const next = updateAuthProvidersSettings({
     oidc: {
-      ...oidcPayload,
-      clientSecret:
-        oidcPayload.clientSecret && oidcPayload.clientSecret !== "********"
-          ? oidcPayload.clientSecret
-          : current.oidc.clientSecret
+      enabled: false
     },
     saml: payload.saml
   });
   logAudit("settings.auth.update", user.id, {
-    oidcEnabled: next.oidc.enabled,
     samlEnabled: next.saml.enabled
   });
   return NextResponse.json({ settings: maskSecrets(next) });

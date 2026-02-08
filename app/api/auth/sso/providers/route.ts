@@ -10,7 +10,6 @@ export async function GET() {
   const settings = getAuthProvidersSettings();
   return NextResponse.json({
     local: true,
-    oidc: settings.oidc.enabled,
     saml: settings.saml.enabled
   });
 }

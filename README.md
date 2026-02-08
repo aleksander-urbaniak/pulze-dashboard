@@ -1,88 +1,127 @@
+<div align="center" width="100%">
+  <img src="./app/icon.svg" width="128" alt="PulZe Logo" />
+</div>
 
+# PulZe Dashboard
 
-# PulZe Monitoring Dashboard
+PulZe is a self-hosted monitoring dashboard that aggregates alerts from Prometheus/Alertmanager, Zabbix, and Uptime Kuma in one place.
 
-PulZe is a unified monitoring dashboard that aggregates alerts from Prometheus/Alertmanager, Zabbix, and Uptime Kuma into a single, fast Next.js UI. It includes user management, role-based access, data source configuration, and appearance controls, backed by a local SQLite database.
+<img src="https://img.shields.io/badge/Next.js-16-black?logo=next.js&logoColor=white" />
+<img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black" />
+<img src="https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white" />
+<img src="https://img.shields.io/badge/Tailwind_CSS-4-38B2AC?logo=tailwind-css&logoColor=white" />
+<img src="https://img.shields.io/badge/SQLite-3-003B57?logo=sqlite&logoColor=white" />
+<img src="https://img.shields.io/badge/Node.js-20-339933?logo=node.js&logoColor=white" />
 
-![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js&logoColor=white) ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black) ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white) ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-38B2AC?logo=tailwind-css&logoColor=white) ![SQLite](https://img.shields.io/badge/SQLite-3-003B57?logo=sqlite&logoColor=white) ![Node.js](https://img.shields.io/badge/Node.js-20-339933?logo=node.js&logoColor=white) ![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)
-
-<img src="public/images/dashboard.png" alt="Pulze Dashboard Demo Screenshot" width="800">
+<img src="./public/images/dashboard.png" width="900" alt="PulZe Dashboard Screenshot" />
 
 ## Features
 
-- Centralized alert view with cards, table, and split modes
-- Cross-source search and filtering
-- Bulk acknowledge/resolve actions with audit trail
-- Role-based access (admin/viewer)
-- Customizable appearance (theme, colors, background, branding)
-- Analytics dashboards and alert trends
+- Unified alert view (cards, table, split)
+- Cross-source filtering and search
+- Bulk acknowledge/resolve with audit trail
+- Role-based access control
+- SAML SSO support (provider-agnostic)
+- Appearance and branding customization
+- Analytics and trend views
 
-## Tech Stack
+## Run with Docker Compose
 
-- Next.js (App Router) + React
-- TypeScript
-- Tailwind CSS
-- SQLite (better-sqlite3)
+Image:
+- `aleksanderurbaniak/pulze-dashboard:latest`
 
-## Getting Started
+`compose.yml` already includes:
+- `APP_VERSION`
+- `APP_BASE_URL` (important for SAML behind domain/reverse proxy)
 
-### Local Development
+Example `.env`:
 
-Prerequisites:
-- Node.js 20+ (LTS recommended)
+```env
+APP_VERSION=v1.0.0
+APP_BASE_URL=https://pulze-demo.auware.xyz
+```
+
+Start:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+PulZe is available on `http://localhost:3000` (or your configured domain).
+
+Stop:
+
+```bash
+docker compose down
+```
+
+## Run from Local Source
+
+Requirements:
+- Node.js 20+
 - npm
 
-Install and run:
 ```bash
 npm install
 npm run dev
 ```
 
-Build and start:
+Production build:
+
 ```bash
 npm run build
 npm start
 ```
 
-Open `http://localhost:3000`.
+## SAML Setup
 
-### Docker (Compose)
+PulZe uses SAML (OIDC is not used in the current flow).
+
+In your IdP (Authentik, Keycloak, Okta, Entra ID, OneLogin, etc.):
+
+1. Create a SAML application/provider.
+2. Set ACS URL to:
+   - `https://your-domain/api/auth/sso/saml/callback`
+3. Set Audience / SP Entity ID to the same value you configure in PulZe `SP entity ID`.
+4. Configure claims/attributes so a username attribute is sent.
+
+In PulZe (`Settings -> Access -> SAML Provider`), fill:
+- `IdP entity ID`
+- `SSO service URL`
+- `SLO service URL` (optional)
+- `Username attribute`
+- `SP entity ID`
+- `SP name ID format`
+
+Notes:
+- `APP_BASE_URL` must match the public URL used by users and IdP.
+- If your IdP does not expose signing certs in metadata, signature validation may fail until signing is configured.
+
+## Versioning
+
+- App version is resolved from latest local Git tag (`git describe --tags --abbrev=0`)
+- Fallback is `package.json` version (`v1.0.0`)
+- Check resolved version:
 
 ```bash
-docker compose up -d --build
+npm run version:repo
 ```
-
-PulZe runs on `http://localhost:3000` and stores its SQLite database in a named Docker volume.
-
-### Docker (Command)
-
-```bash
-docker build -t pulze-dashboard .
-docker run -d --name pulze-dashboard -p 3000:3000 -v pulze-data:/app/data pulze-dashboard
-```
-
-## First Run
-
-On first launch, the app prompts you to create the initial admin account. After login:
-- Configure data sources in Settings -> Data Sources.
-- Manage users and profile in Settings -> Users.
-- Adjust appearance and branding in Settings -> Appearance (admin only).
 
 ## Data Sources
 
-Each source supports multiple instances with labels:
-- Prometheus/Alertmanager: base URL only; `/api/v2/alerts` is appended automatically.
-- Zabbix: base URL only; `/zabbix/api_jsonrpc.php` is appended automatically.
-- Uptime Kuma: base URL + mode (status page or API key).
+Multiple instances are supported for each source:
 
-## Database
+- Prometheus/Alertmanager: base URL; `/api/v2/alerts` is appended
+- Zabbix: base URL; `/zabbix/api_jsonrpc.php` is appended
+- Uptime Kuma: base URL + mode (`status` or `apiKey`)
 
-The SQLite database lives at `data/pulze.db`. It is created automatically on first run.
+## Data Persistence
 
-## Environment
-
-No environment variables are required by default.
+- Local: SQLite file at `data/pulze.db`
+- Docker: named volume `pulze-data` mounted to `/app/data`
 
 ## Troubleshooting
 
-If `better-sqlite3` fails to build on Windows, use Node.js LTS and ensure Visual Studio Build Tools are installed.
+- If `better-sqlite3` fails on Windows, use Node.js LTS and install Visual Studio Build Tools.
+- If SAML ACS mismatch appears, set `APP_BASE_URL` to the exact public URL.
