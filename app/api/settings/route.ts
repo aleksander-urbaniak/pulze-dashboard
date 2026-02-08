@@ -1,8 +1,11 @@
 import crypto from "crypto";
 import { NextResponse } from "next/server";
 
-import { getSessionUser } from "../../../lib/auth";
+export const dynamic = "force-dynamic"
+
 import { getSettings, logAudit, updateSettings } from "../../../lib/db";
+import { requirePermission } from "../../../lib/auth-guard";
+import { hasPermission } from "../../../lib/rbac";
 import type {
   AppearanceSettings,
   BrandingSettings,
@@ -17,39 +20,41 @@ import { defaultAppearance } from "../../../lib/appearance";
 export const runtime = "nodejs";
 
 export async function GET() {
-  const user = await getSessionUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const permission = await requirePermission("settings.read");
+  if (permission.response) {
+    return permission.response;
   }
+  const user = permission.user;
 
   const settings = getSettings();
-  const isAdmin = user.role === "admin";
+  const canEdit = hasPermission(user, "settings.write");
 
   return NextResponse.json({
     settings: {
       ...settings,
       prometheusSources: settings.prometheusSources.map((source) => ({
         ...source,
-        authValue: isAdmin ? source.authValue : ""
+        authValue: canEdit ? source.authValue : ""
       })),
       zabbixSources: settings.zabbixSources.map((source) => ({
         ...source,
-        token: isAdmin ? source.token : ""
+        token: canEdit ? source.token : ""
       })),
       kumaSources: settings.kumaSources.map((source) => ({
         ...source,
-        key: isAdmin ? source.key : ""
+        key: canEdit ? source.key : ""
       }))
     },
-    canEdit: isAdmin
+    canEdit
   });
 }
 
 export async function PUT(request: Request) {
-  const user = await getSessionUser();
-  if (!user || user.role !== "admin") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const permission = await requirePermission("settings.write");
+  if (permission.response) {
+    return permission.response;
   }
+  const user = permission.user;
 
   const payload = (await request.json()) as Partial<{
     prometheusSources: PrometheusSource[];

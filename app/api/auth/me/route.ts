@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getSessionUser } from "../../../../lib/auth";
+import { toPublicUser } from "../../../../lib/public-user";
 
 export const runtime = "nodejs";
 
@@ -10,16 +11,6 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  return NextResponse.json({
-    user: {
-      id: user.id,
-      username: user.username,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      email: user.email,
-      avatarUrl: user.avatarUrl,
-      role: user.role
-    }
-  });
+  return NextResponse.json({ user: toPublicUser(user) });
 }
 

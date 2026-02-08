@@ -1,26 +1,30 @@
 import { NextResponse } from "next/server";
 
-import { getSessionUser } from "../../../lib/auth";
+export const dynamic = "force-dynamic"
+
+import { requirePermission } from "../../../lib/auth-guard";
 import { createSavedView, deleteSavedView, listSavedViews, logAudit } from "../../../lib/db";
 import type { SavedViewFilters } from "../../../lib/types";
 
 export const runtime = "nodejs";
 
 export async function GET() {
-  const user = await getSessionUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const permission = await requirePermission("dashboard.read");
+  if (permission.response) {
+    return permission.response;
   }
+  const user = permission.user;
 
   const views = listSavedViews(user.id);
   return NextResponse.json({ views });
 }
 
 export async function POST(request: Request) {
-  const user = await getSessionUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const permission = await requirePermission("dashboard.read");
+  if (permission.response) {
+    return permission.response;
   }
+  const user = permission.user;
 
   const payload = (await request.json()) as { name?: string; filters?: SavedViewFilters };
   const name = payload.name?.trim() ?? "";
@@ -37,10 +41,11 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const user = await getSessionUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const permission = await requirePermission("dashboard.read");
+  if (permission.response) {
+    return permission.response;
   }
+  const user = permission.user;
 
   const payload = (await request.json()) as { id?: string };
   if (!payload.id) {

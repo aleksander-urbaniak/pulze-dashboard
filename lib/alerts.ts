@@ -8,7 +8,13 @@ import type {
   PrometheusSource,
   ZabbixSource
 } from "./types";
-import { getSourceHealth, recordSourceFailure, recordSourceSuccess } from "./db";
+import {
+  getSourceHealth,
+  listActiveSilences,
+  recordSourceFailure,
+  recordSourceSuccess
+} from "./db";
+import { applyAlertSilences } from "./alert-processing";
 import type { SettingsRow } from "./db";
 
 export type AlertFetchError = { source: string; message: string };
@@ -174,23 +180,31 @@ async function parseJsonResponse(response: Response) {
 
 function toAlert(params: {
   source: AlertSource;
+  sourceId?: string;
   sourceLabel?: string;
   name: string;
   severity: AlertSeverity;
   message: string;
   timestamp: string;
   instance?: string;
+  service?: string;
+  environment?: string;
+  fingerprint?: string;
   idParts?: Array<string | number | undefined | null>;
 }): Alert {
   return {
     id: formatId(params.idParts ?? [params.source, params.name, params.timestamp]),
     source: params.source,
+    sourceId: params.sourceId,
     sourceLabel: params.sourceLabel,
     name: params.name,
     severity: params.severity,
     message: params.message,
     timestamp: params.timestamp,
-    instance: params.instance
+    instance: params.instance,
+    service: params.service,
+    environment: params.environment,
+    fingerprint: params.fingerprint
   };
 }
 
@@ -216,6 +230,10 @@ async function fetchPrometheusFromSource(source: PrometheusSource): Promise<Aler
       const name = labels.alertname ?? "Alert";
       const instance = labels.instance ?? "";
       const instanceLabel = labels.instance ?? "-";
+      const service = labels.service ?? labels.job ?? labels.namespace ?? name;
+      const environment =
+        labels.environment ?? labels.env ?? labels.cluster ?? labels.namespace ?? "";
+      const fingerprint = String(alert.fingerprint ?? "");
       const message = withSourceName(
         annotations.summary ?? annotations.description ?? instanceLabel,
         source.name
@@ -224,12 +242,16 @@ async function fetchPrometheusFromSource(source: PrometheusSource): Promise<Aler
       const timestamp = alert.startsAt ?? new Date().toISOString();
       return toAlert({
         source: "Prometheus",
+        sourceId: source.id,
         sourceLabel: source.name,
         name,
         severity,
         message,
         timestamp,
         instance,
+        service,
+        environment,
+        fingerprint,
         idParts: [source.id, alert.fingerprint, name, instanceLabel, timestamp]
       });
     });
@@ -266,6 +288,7 @@ export async function fetchPrometheusTestLine(source: PrometheusSource): Promise
 export async function fetchPrometheusAlerts(settings: SettingsRow): Promise<AlertFetchResult> {
   const alerts: Alert[] = [];
   const errors: AlertFetchError[] = [];
+  const activeSilences = listActiveSilences();
 
   for (const source of settings.prometheusSources) {
     if (!source.url) {
@@ -280,7 +303,8 @@ export async function fetchPrometheusAlerts(settings: SettingsRow): Promise<Aler
       continue;
     }
     try {
-      alerts.push(...(await fetchPrometheusFromSource(source)));
+      const sourceAlerts = await fetchPrometheusFromSource(source);
+      alerts.push(...applyAlertSilences(sourceAlerts, activeSilences));
       recordSourceSuccess("Prometheus", source.id);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Request failed";
@@ -330,12 +354,16 @@ async function fetchZabbixFromSource(source: ZabbixSource): Promise<Alert[]> {
       : new Date().toISOString();
     return toAlert({
       source: "Zabbix",
+      sourceId: source.id,
       sourceLabel: source.name,
       name,
       severity,
       message: withSourceName(`${host} - ${name}`, source.name),
       timestamp,
       instance: host,
+      service: host,
+      environment: "",
+      fingerprint: String(trigger?.triggerid ?? ""),
       idParts: [source.id, trigger?.triggerid, host, name, timestamp]
     });
   });
@@ -397,6 +425,7 @@ export async function fetchZabbixTestLine(source: ZabbixSource): Promise<string 
 export async function fetchZabbixAlerts(settings: SettingsRow): Promise<AlertFetchResult> {
   const alerts: Alert[] = [];
   const errors: AlertFetchError[] = [];
+  const activeSilences = listActiveSilences();
 
   for (const source of settings.zabbixSources) {
     if (!source.url) {
@@ -411,7 +440,8 @@ export async function fetchZabbixAlerts(settings: SettingsRow): Promise<AlertFet
       continue;
     }
     try {
-      alerts.push(...(await fetchZabbixFromSource(source)));
+      const sourceAlerts = await fetchZabbixFromSource(source);
+      alerts.push(...applyAlertSilences(sourceAlerts, activeSilences));
       recordSourceSuccess("Zabbix", source.id);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Request failed";
@@ -479,12 +509,16 @@ async function fetchKumaStatusAlerts(source: KumaSource): Promise<Alert[]> {
       }
         return toAlert({
           source: "Kuma",
+          sourceId: source.id,
           sourceLabel: source.name,
           name,
           severity: "critical",
           message: withSourceName("Monitor down", source.name),
           timestamp: new Date().toISOString(),
           instance: name,
+          service: name,
+          environment: "",
+          fingerprint: id || name,
           idParts: [source.id, id, name]
         });
       })
@@ -497,13 +531,17 @@ async function fetchKumaApiKeyAlerts(source: KumaSource): Promise<Alert[]> {
   return downMonitors.map((name) =>
     toAlert({
       source: "Kuma",
+      sourceId: source.id,
       sourceLabel: source.name,
       name,
       severity: "critical",
       message: withSourceName("Monitor down", source.name),
       timestamp: now,
       instance: name,
-      idParts: [source.id, name, now]
+      service: name,
+      environment: "",
+      fingerprint: name,
+      idParts: [source.id, name]
     })
   );
 }
@@ -590,6 +628,7 @@ async function fetchKumaMetricsDown(source: KumaSource) {
 export async function fetchKumaAlerts(settings: SettingsRow): Promise<AlertFetchResult> {
   const alerts: Alert[] = [];
   const errors: AlertFetchError[] = [];
+  const activeSilences = listActiveSilences();
 
   for (const source of settings.kumaSources) {
     if (!source.baseUrl) {
@@ -608,7 +647,7 @@ export async function fetchKumaAlerts(settings: SettingsRow): Promise<AlertFetch
         source.mode === "apiKey"
           ? await fetchKumaApiKeyAlerts(source)
           : await fetchKumaStatusAlerts(source);
-      alerts.push(...sourceAlerts);
+      alerts.push(...applyAlertSilences(sourceAlerts, activeSilences));
       recordSourceSuccess("Kuma", source.id);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Request failed";

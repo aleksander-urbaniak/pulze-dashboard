@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 
 import { getSessionUser } from "../../../../lib/auth";
 import { getUserByUsername, logAudit, updateUser } from "../../../../lib/db";
+import { toPublicUser } from "../../../../lib/public-user";
 
 export const runtime = "nodejs";
 
@@ -43,16 +44,6 @@ export async function PATCH(request: Request) {
     fields: Object.keys(payload).filter((key) => key !== "password")
   });
 
-  return NextResponse.json({
-    user: {
-      id: updated.id,
-      username: updated.username,
-      firstName: updated.firstName,
-      lastName: updated.lastName,
-      email: updated.email,
-      avatarUrl: updated.avatarUrl,
-      role: updated.role
-    }
-  });
+  return NextResponse.json({ user: toPublicUser(updated) });
 }
 

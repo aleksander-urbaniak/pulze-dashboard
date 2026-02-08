@@ -52,7 +52,13 @@ export default function HomePage() {
   const [viewMode, setViewMode] = useState<ViewMode>("cards");
   const [settings, setSettings] = useState<Settings>(emptySettings);
   const [loginForm, setLoginForm] = useState({ username: "", password: "" });
+  const [loginTotpCode, setLoginTotpCode] = useState("");
+  const [loginChallengeToken, setLoginChallengeToken] = useState<string | null>(null);
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [ssoProviders, setSsoProviders] = useState<{ oidc: boolean; saml: boolean }>({
+    oidc: false,
+    saml: false
+  });
   const [setupForm, setSetupForm] = useState({
     firstName: "",
     lastName: "",
@@ -184,7 +190,17 @@ export default function HomePage() {
   }
 
   async function updateAlertStateBulk(status: "active" | "acknowledged" | "resolved") {
-    const ids = Array.from(selectedAlertIds);
+    if (!user?.permissions?.includes("alerts.ack")) {
+      return;
+    }
+    const ids = Array.from(
+      new Set(
+        Array.from(selectedAlertIds).flatMap((selectedId) => {
+          const entry = filteredAlerts.find((alert) => alert.id === selectedId);
+          return entry?.groupedAlertIds?.length ? entry.groupedAlertIds : [selectedId];
+        })
+      )
+    );
     if (ids.length === 0) {
       return;
     }
@@ -196,35 +212,7 @@ export default function HomePage() {
     if (!response.ok) {
       return;
     }
-    const data = (await response.json()) as {
-      states: Array<{
-        alertId: string;
-        status: "active" | "acknowledged" | "resolved";
-        note: string;
-        updatedAt: string;
-        updatedBy: string | null;
-        acknowledgedAt: string | null;
-        resolvedAt: string | null;
-      }>;
-    };
-    const stateMap = new Map(data.states.map((state) => [state.alertId, state]));
-    setAlerts((prev) =>
-      prev.map((alert) => {
-        const state = stateMap.get(alert.id);
-        if (!state) {
-          return alert;
-        }
-        return {
-          ...alert,
-          ackStatus: state.status,
-          ackNote: state.note,
-          ackUpdatedAt: state.updatedAt,
-          ackUpdatedBy: state.updatedBy ?? undefined,
-          acknowledgedAt: state.acknowledgedAt ?? undefined,
-          resolvedAt: state.resolvedAt ?? undefined
-        };
-      })
-    );
+    await loadAlerts();
     clearSelectedAlerts();
   }
 
@@ -365,12 +353,26 @@ export default function HomePage() {
       setNotifications([]);
       setIsNotificationsOpen(false);
       await checkSetup();
+      await loadSsoProviders();
       setIsCheckingSetup(false);
       return;
     }
     const data = (await response.json()) as UserResponse;
     setUser(data.user);
     setIsCheckingSetup(false);
+  }
+
+  async function loadSsoProviders() {
+    const response = await fetch("/api/auth/sso/providers");
+    if (!response.ok) {
+      setSsoProviders({ oidc: false, saml: false });
+      return;
+    }
+    const data = (await response.json()) as { oidc?: boolean; saml?: boolean };
+    setSsoProviders({
+      oidc: Boolean(data.oidc),
+      saml: Boolean(data.saml)
+    });
   }
 
   async function loadSettings() {
@@ -393,9 +395,11 @@ export default function HomePage() {
     setAlerts(data.alerts);
     setErrors(data.errors ?? []);
     setSourceHealth(data.health ?? null);
-    const currentIds = new Set(data.alerts.map((alert) => alert.id));
+    const currentIds = new Set(data.alerts.map((alert) => alert.groupKey ?? alert.id));
     if (lastAlertIdsRef.current) {
-      const newAlerts = data.alerts.filter((alert) => !lastAlertIdsRef.current?.has(alert.id));
+      const newAlerts = data.alerts.filter(
+        (alert) => !lastAlertIdsRef.current?.has(alert.groupKey ?? alert.id)
+      );
       if (newAlerts.length > 0) {
         setNewAlertCount((count) => count + newAlerts.length);
         setNotifications((prev) => [...newAlerts, ...prev].slice(0, 20));
@@ -406,59 +410,52 @@ export default function HomePage() {
   }
 
   async function updateAlertState(alertId: string, status: "active" | "acknowledged" | "resolved") {
-    const response = await fetch("/api/alerts/state", {
+    if (!user?.permissions?.includes("alerts.ack")) {
+      return;
+    }
+    const entry = alerts.find((alert) => alert.id === alertId);
+    const targetIds = entry?.groupedAlertIds?.length ? entry.groupedAlertIds : [alertId];
+    const response = await fetch("/api/alerts/state/bulk", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ alertId, status, note: alertNoteDraft })
+      body: JSON.stringify({ alertIds: targetIds, status, note: alertNoteDraft })
     });
     if (!response.ok) {
       return;
     }
-    const data = (await response.json()) as {
-      state: {
-        alertId: string;
-        status: "active" | "acknowledged" | "resolved";
-        note: string;
-        updatedAt: string;
-        updatedBy: string | null;
-        acknowledgedAt: string | null;
-        resolvedAt: string | null;
-      };
-    };
-    setAlerts((prev) =>
-      prev.map((alert) =>
-        alert.id === data.state.alertId
-          ? {
-              ...alert,
-              ackStatus: data.state.status,
-              ackNote: data.state.note,
-              ackUpdatedAt: data.state.updatedAt,
-              ackUpdatedBy: data.state.updatedBy ?? undefined,
-              acknowledgedAt: data.state.acknowledgedAt ?? undefined,
-              resolvedAt: data.state.resolvedAt ?? undefined
-            }
-          : alert
-      )
-    );
+    await loadAlerts();
   }
 
   async function handleLogin(event: React.FormEvent) {
     event.preventDefault();
     setLoginError(null);
+    const payload = loginChallengeToken
+      ? {
+          challengeToken: loginChallengeToken,
+          totpCode: loginTotpCode
+        }
+      : loginForm;
     const response = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(loginForm)
+      body: JSON.stringify(payload)
     });
+    const data = await response.json();
     if (!response.ok) {
-      const data = await response.json();
       setLoginError(data.error ?? "Login failed");
       return;
     }
-    const data = (await response.json()) as UserResponse;
-    setUser(data.user);
+    if (data.requiresTwoFactor && data.challengeToken) {
+      setLoginChallengeToken(data.challengeToken);
+      setLoginTotpCode("");
+      setLoginError(null);
+      return;
+    }
+    setUser((data as UserResponse).user);
     setNeedsSetup(false);
     setLoginForm({ username: "", password: "" });
+    setLoginChallengeToken(null);
+    setLoginTotpCode("");
   }
 
   async function handleSetup(event: React.FormEvent) {
@@ -488,7 +485,10 @@ export default function HomePage() {
     setNewAlertCount(0);
     setNotifications([]);
     setIsNotificationsOpen(false);
+    setLoginChallengeToken(null);
+    setLoginTotpCode("");
     await checkSetup();
+    await loadSsoProviders();
     setIsCheckingSetup(false);
   }
 
@@ -499,10 +499,19 @@ export default function HomePage() {
         isCheckingSetup={isCheckingSetup}
         loginForm={loginForm}
         setLoginForm={setLoginForm}
+        loginTotpCode={loginTotpCode}
+        setLoginTotpCode={setLoginTotpCode}
+        isTwoFactorStep={Boolean(loginChallengeToken)}
+        onCancelTwoFactor={() => {
+          setLoginChallengeToken(null);
+          setLoginTotpCode("");
+          setLoginError(null);
+        }}
         setupForm={setupForm}
         setSetupForm={setSetupForm}
         loginError={loginError}
         setupError={setupError}
+        ssoProviders={ssoProviders}
         onLoginSubmit={handleLogin}
         onSetupSubmit={handleSetup}
       />
@@ -516,6 +525,7 @@ export default function HomePage() {
     | "resolved";
   const selectedAlertSourceUrl = selectedAlert ? getAlertSourceUrl(selectedAlert) : null;
   const staleSources = sourceHealth?.staleSources ?? [];
+  const canAcknowledge = Boolean(user.permissions?.includes("alerts.ack"));
 
   const handleToggleNotifications = () => {
     setIsNotificationsOpen((open) => !open);
@@ -606,6 +616,7 @@ export default function HomePage() {
             onSelectAll={selectAllFiltered}
             onClearSelection={clearSelectedAlerts}
             onExportAlerts={exportAlertsToCsv}
+            canAcknowledge={canAcknowledge}
             onBulkUpdate={updateAlertStateBulk}
           />
 
@@ -622,6 +633,7 @@ export default function HomePage() {
               onToggleSelection={toggleAlertSelection}
               onUpdateAlertState={updateAlertState}
               getAlertSourceUrl={getAlertSourceUrl}
+              canAcknowledge={canAcknowledge}
             />
           ) : viewMode === "table" ? (
             <AlertsTableView
@@ -635,6 +647,7 @@ export default function HomePage() {
               onToggleSelection={toggleAlertSelection}
               onUpdateAlertState={updateAlertState}
               getAlertSourceUrl={getAlertSourceUrl}
+              canAcknowledge={canAcknowledge}
             />
           ) : (
             <AlertsSplitView
@@ -651,6 +664,7 @@ export default function HomePage() {
               onToggleSelection={toggleAlertSelection}
               onUpdateAlertState={updateAlertState}
               getAlertSourceUrl={getAlertSourceUrl}
+              canAcknowledge={canAcknowledge}
             />
           )}
         </main>

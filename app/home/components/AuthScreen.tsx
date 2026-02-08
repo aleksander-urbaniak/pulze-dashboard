@@ -19,10 +19,15 @@ type AuthScreenProps = {
   isCheckingSetup: boolean;
   loginForm: LoginForm;
   setLoginForm: React.Dispatch<React.SetStateAction<LoginForm>>;
+  loginTotpCode: string;
+  setLoginTotpCode: React.Dispatch<React.SetStateAction<string>>;
+  isTwoFactorStep: boolean;
+  onCancelTwoFactor: () => void;
   setupForm: SetupForm;
   setSetupForm: React.Dispatch<React.SetStateAction<SetupForm>>;
   loginError: string | null;
   setupError: string | null;
+  ssoProviders: { oidc: boolean; saml: boolean };
   onLoginSubmit: (event: React.FormEvent) => void;
   onSetupSubmit: (event: React.FormEvent) => void;
 };
@@ -32,10 +37,15 @@ export default function AuthScreen({
   isCheckingSetup,
   loginForm,
   setLoginForm,
+  loginTotpCode,
+  setLoginTotpCode,
+  isTwoFactorStep,
+  onCancelTwoFactor,
   setupForm,
   setSetupForm,
   loginError,
   setupError,
+  ssoProviders,
   onLoginSubmit,
   onSetupSubmit
 }: AuthScreenProps) {
@@ -196,43 +206,89 @@ export default function AuthScreen({
           </div>
         ) : (
           <form onSubmit={onLoginSubmit} className="mt-6 space-y-4">
-            <div>
-              <label htmlFor="login-username" className="text-xs uppercase tracking-[0.2em] text-muted">
-                Username
-              </label>
-              <input
-                id="login-username"
-                name="username"
-                value={loginForm.username}
-                onChange={(event) => setLoginForm({ ...loginForm, username: event.target.value })}
-                autoComplete="username"
-                autoCapitalize="none"
-                autoCorrect="off"
-                spellCheck={false}
-                className="mt-2 w-full rounded-xl border border-border bg-base/60 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-              />
-            </div>
-            <div>
-              <label htmlFor="login-password" className="text-xs uppercase tracking-[0.2em] text-muted">
-                Password
-              </label>
-              <input
-                id="login-password"
-                name="password"
-                type="password"
-                value={loginForm.password}
-                onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })}
-                autoComplete="current-password"
-                className="mt-2 w-full rounded-xl border border-border bg-base/60 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
-              />
-            </div>
+            {!isTwoFactorStep ? (
+              <>
+                <div>
+                  <label htmlFor="login-username" className="text-xs uppercase tracking-[0.2em] text-muted">
+                    Username
+                  </label>
+                  <input
+                    id="login-username"
+                    name="username"
+                    value={loginForm.username}
+                    onChange={(event) => setLoginForm({ ...loginForm, username: event.target.value })}
+                    autoComplete="username"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    className="mt-2 w-full rounded-xl border border-border bg-base/60 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="login-password" className="text-xs uppercase tracking-[0.2em] text-muted">
+                    Password
+                  </label>
+                  <input
+                    id="login-password"
+                    name="password"
+                    type="password"
+                    value={loginForm.password}
+                    onChange={(event) => setLoginForm({ ...loginForm, password: event.target.value })}
+                    autoComplete="current-password"
+                    className="mt-2 w-full rounded-xl border border-border bg-base/60 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                  />
+                </div>
+              </>
+            ) : (
+              <div>
+                <label htmlFor="login-totp" className="text-xs uppercase tracking-[0.2em] text-muted">
+                  2FA code
+                </label>
+                <input
+                  id="login-totp"
+                  name="totp"
+                  value={loginTotpCode}
+                  onChange={(event) => setLoginTotpCode(event.target.value)}
+                  autoComplete="one-time-code"
+                  placeholder="123456"
+                  inputMode="numeric"
+                  className="mt-2 w-full rounded-xl border border-border bg-base/60 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent"
+                />
+              </div>
+            )}
             {loginError ? <p className="text-sm text-red-500">{loginError}</p> : null}
             <button
               type="submit"
               className="w-full rounded-xl bg-accent py-3 text-sm font-semibold text-white shadow-card"
             >
-              Sign In
+              {isTwoFactorStep ? "Verify Code" : "Sign In"}
             </button>
+            {isTwoFactorStep ? (
+              <button
+                type="button"
+                onClick={onCancelTwoFactor}
+                className="w-full rounded-xl border border-border py-3 text-sm font-semibold"
+              >
+                Use another account
+              </button>
+            ) : null}
+            {!isTwoFactorStep && (ssoProviders.oidc || ssoProviders.saml) ? (
+              <div className="space-y-2">
+                {ssoProviders.oidc ? (
+                  <a
+                    href="/api/auth/sso/oidc/start"
+                    className="block w-full rounded-xl border border-border bg-base/60 py-3 text-center text-sm font-semibold"
+                  >
+                    Continue with OIDC SSO
+                  </a>
+                ) : null}
+                {ssoProviders.saml ? (
+                  <p className="rounded-xl border border-border bg-base/60 py-3 text-center text-sm font-semibold text-muted">
+                    SAML SSO configured for this environment
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
           </form>
         )}
       </div>

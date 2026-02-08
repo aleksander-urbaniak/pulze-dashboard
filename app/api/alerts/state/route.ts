@@ -1,15 +1,18 @@
 import { NextResponse } from "next/server";
 
-import { getSessionUser } from "../../../../lib/auth";
+export const dynamic = "force-dynamic"
+
+import { requirePermission } from "../../../../lib/auth-guard";
 import { logAudit, upsertAlertState } from "../../../../lib/db";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  const user = await getSessionUser();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const permission = await requirePermission("alerts.ack");
+  if (permission.response) {
+    return permission.response;
   }
+  const user = permission.user;
 
   const payload = (await request.json()) as {
     alertId?: string;

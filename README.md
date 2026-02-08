@@ -6,7 +6,7 @@ PulZe is a unified monitoring dashboard that aggregates alerts from Prometheus/A
 
 ![Next.js](https://img.shields.io/badge/Next.js-16-black?logo=next.js&logoColor=white) ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black) ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white) ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-38B2AC?logo=tailwind-css&logoColor=white) ![SQLite](https://img.shields.io/badge/SQLite-3-003B57?logo=sqlite&logoColor=white) ![Node.js](https://img.shields.io/badge/Node.js-20-339933?logo=node.js&logoColor=white) ![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)
 
-<img src="images/dashboard.png" alt="Pulze Dashboard Demo Screenshot" width="800">
+<img src="public/images/dashboard.png" alt="Pulze Dashboard Demo Screenshot" width="800">
 
 ## Features
 

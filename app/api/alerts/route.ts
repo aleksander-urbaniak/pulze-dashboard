@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { fetchKumaAlerts, fetchPrometheusAlerts, fetchZabbixAlerts } from "../../../lib/alerts";
+import { groupAndDeduplicateAlerts } from "../../../lib/alert-processing";
+import { requirePermission } from "../../../lib/auth-guard";
 import {
   getAlertStatesByIds,
   getSettings,
@@ -11,7 +13,36 @@ import {
 
 export const runtime = "nodejs";
 
-export async function GET() {
+function aggregateGroupedState(alertIds: string[], stateMap: Map<string, any>) {
+  const states = alertIds
+    .map((id) => stateMap.get(id))
+    .filter(Boolean)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  if (states.length === 0) {
+    return {
+      ackStatus: "active" as const
+    };
+  }
+  const hasActive = states.some((state) => state.status === "active");
+  const hasAcknowledged = states.some((state) => state.status === "acknowledged");
+  const chosen = states[0];
+  return {
+    ackStatus: hasActive ? "active" : hasAcknowledged ? "acknowledged" : "resolved",
+    ackNote: chosen.note,
+    ackUpdatedAt: chosen.updatedAt,
+    ackUpdatedBy: chosen.updatedBy ?? undefined,
+    acknowledgedAt: chosen.acknowledgedAt ?? undefined,
+    resolvedAt: chosen.resolvedAt ?? undefined
+  };
+}
+
+export async function GET(request: Request) {
+  const permission = await requirePermission("dashboard.read");
+  if (permission.response) {
+    return permission.response;
+  }
+  const url = new URL(request.url);
+  const grouped = url.searchParams.get("grouped") !== "0";
   const settings = getSettings();
   const staleThresholdMs = Math.max(5 * 60 * 1000, settings.refreshInterval * 1000 * 3);
   const results = await Promise.allSettled([
@@ -59,6 +90,14 @@ export async function GET() {
   });
 
   mergedAlerts.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  const processedAlerts = grouped ? groupAndDeduplicateAlerts(mergedAlerts) : mergedAlerts;
+  const responseAlerts = processedAlerts.map((alert) => {
+    const ids = alert.groupedAlertIds?.length ? alert.groupedAlertIds : [alert.id];
+    return {
+      ...alert,
+      ...aggregateGroupedState(ids, stateMap)
+    };
+  });
 
   const healthRows = listSourceHealth();
   const healthMap = new Map(
@@ -113,7 +152,7 @@ export async function GET() {
 
   return NextResponse.json(
     {
-      alerts: mergedAlerts,
+      alerts: responseAlerts,
       errors,
       health: {
         staleThresholdMs,

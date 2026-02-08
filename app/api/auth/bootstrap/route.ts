@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { createSession, createUser, countUsers, logAudit } from "../../../../lib/db";
+import { toPublicUser } from "../../../../lib/public-user";
 
 export const runtime = "nodejs";
 
@@ -38,17 +39,7 @@ export async function POST(request: Request) {
 
   const session = createSession(user.id);
   logAudit("auth.bootstrap", user.id, { username: user.username });
-  const response = NextResponse.json({
-    user: {
-      id: user.id,
-      username: user.username,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      email: user.email,
-      avatarUrl: user.avatarUrl,
-      role: user.role
-    }
-  });
+  const response = NextResponse.json({ user: toPublicUser(user) });
 
   response.cookies.set("pulze_session", session.token, {
     httpOnly: true,
