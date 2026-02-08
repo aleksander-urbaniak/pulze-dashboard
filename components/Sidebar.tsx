@@ -70,6 +70,8 @@ const navItems = [
   }
 ];
 
+const appVersion = process.env.NEXT_PUBLIC_APP_VERSION ?? "v1.0.0";
+
 export default function Sidebar({ user, onLogout, settingsTabs }: SidebarProps) {
   const pathname = usePathname();
   const initials = `${user.firstName?.[0] ?? ""}${user.lastName?.[0] ?? ""}`.toUpperCase();
@@ -208,6 +210,9 @@ export default function Sidebar({ user, onLogout, settingsTabs }: SidebarProps) 
               Logout
             </button>
           ) : null}
+          <p className="text-center text-xs uppercase tracking-[0.2em] text-muted">
+            Version {appVersion}
+          </p>
         </div>
       </div>
     </aside>

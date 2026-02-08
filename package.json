@@ -7,7 +7,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "version:repo": "node scripts/git-version.mjs",
+    "docker:build": "node scripts/docker-versioned.mjs build",
+    "docker:up": "node scripts/docker-versioned.mjs up",
+    "docker:up:fg": "node scripts/docker-versioned.mjs up-fg",
+    "docker:down": "docker compose down"
   },
   "dependencies": {
     "bcryptjs": "3.0.3",

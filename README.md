@@ -46,19 +46,35 @@ npm start
 
 Open `http://localhost:3000`.
 
+App version is resolved from the latest local Git tag (`git describe --tags --abbrev=0`), with fallback to `package.json` version when Git metadata is unavailable.
+
+Check the resolved version:
+```bash
+npm run version:repo
+```
+
 ### Docker (Compose)
 
 ```bash
-docker compose up -d --build
+npm run docker:up
 ```
 
 PulZe runs on `http://localhost:3000` and stores its SQLite database in a named Docker volume.
 
 ### Docker (Command)
 
+`bash`:
 ```bash
-docker build -t pulze-dashboard .
-docker run -d --name pulze-dashboard -p 3000:3000 -v pulze-data:/app/data pulze-dashboard
+APP_VERSION=$(npm run --silent version:repo)
+docker build --build-arg APP_VERSION="$APP_VERSION" -t pulze-dashboard:"$APP_VERSION" .
+docker run -d --name pulze-dashboard -p 3000:3000 -v pulze-data:/app/data pulze-dashboard:"$APP_VERSION"
+```
+
+`PowerShell`:
+```powershell
+$env:APP_VERSION = npm run --silent version:repo
+docker build --build-arg APP_VERSION=$env:APP_VERSION -t pulze-dashboard:$env:APP_VERSION .
+docker run -d --name pulze-dashboard -p 3000:3000 -v pulze-data:/app/data pulze-dashboard:$env:APP_VERSION
 ```
 
 ## First Run
