@@ -1,11 +1,9 @@
 services:
   pulze-dashboard:
     image: aleksanderurbaniak/pulze-dashboard:latest
-    restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
-      NODE_ENV: production
       APP_BASE_URL: ${APP_BASE_URL:-}
     volumes:
       - pulze-data:/app/data

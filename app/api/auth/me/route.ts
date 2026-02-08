@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+export const dynamic = "force-dynamic"
+
 import { getSessionUser } from "../../../../lib/auth";
 import { toPublicUser } from "../../../../lib/public-user";
 
@@ -13,4 +15,5 @@ export async function GET() {
 
   return NextResponse.json({ user: toPublicUser(user) });
 }
+
 

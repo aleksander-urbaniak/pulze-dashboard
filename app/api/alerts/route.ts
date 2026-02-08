@@ -12,6 +12,7 @@ import {
 } from "../../../lib/db";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 function aggregateGroupedState(alertIds: string[], stateMap: Map<string, any>) {
   const states = alertIds
