@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "next-themes";
 
-import Sidebar from "../../components/Sidebar";
+import { useAppSession } from "../../lib/app-session";
 import UserGreetingPill from "../../components/UserGreetingPill";
 import { applyAppearanceToDocument, defaultAppearance } from "../../lib/appearance";
 import type {
@@ -24,7 +24,6 @@ import AppearanceSection from "./components/AppearanceSection";
 import AuditSection from "./components/AuditSection";
 import UsersSection from "./components/UsersSection";
 import AuthProvidersSection from "./components/AuthProvidersSection";
-import ProfileEditorModal from "./components/ProfileEditorModal";
 
 const emptySettings: Settings = {
   prometheusSources: [],
@@ -35,7 +34,6 @@ const emptySettings: Settings = {
 };
 
 type SettingsResponse = { settings: Settings; canEdit: boolean };
-type UserResponse = { user: User };
 type UsersResponse = { users: User[] };
 type AuditLogResponse = { logs: AuditLogEntry[]; total: number };
 type AuthProvidersResponse = { settings: AuthProvidersSettings };
@@ -115,25 +113,13 @@ export default function SettingsPage() {
   const searchParams = useSearchParams();
   const requestedTabFromUrl = searchParams.get("tab") as TabKey | null;
   const { setTheme } = useTheme();
-  const [user, setUser] = useState<User | null>(null);
+  const { user, settings } = useAppSession();
   const [activeTab, setActiveTab] = useState<TabKey>(requestedTabFromUrl ?? "data");
-  const [settingsDraft, setSettingsDraft] = useState<Settings>(emptySettings);
+  const [settingsDraft, setSettingsDraft] = useState<Settings>(settings || emptySettings);
   const [canEditSettings, setCanEditSettings] = useState(false);
   const [settingsStatus, setSettingsStatus] = useState<string | null>(null);
   const [authDraft, setAuthDraft] = useState<AuthProvidersSettings>(defaultAuthProviders);
   const [authStatus, setAuthStatus] = useState<string | null>(null);
-  const [profileDraft, setProfileDraft] = useState({
-    firstName: "",
-    lastName: "",
-    username: "",
-    email: "",
-    avatarUrl: "",
-    password: ""
-  });
-  const [profileStatus, setProfileStatus] = useState<string | null>(null);
-  const [twoFactorStatus, setTwoFactorStatus] = useState<string | null>(null);
-  const [twoFactorSetupSecret, setTwoFactorSetupSecret] = useState<string | null>(null);
-  const [twoFactorCode, setTwoFactorCode] = useState("");
   const [users, setUsers] = useState<User[]>([]);
   const [userStatus, setUserStatus] = useState<string | null>(null);
   const [userUpdateStatus, setUserUpdateStatus] = useState<string | null>(null);
@@ -146,7 +132,6 @@ export default function SettingsPage() {
   const [auditPageSize, setAuditPageSize] = useState(25);
   const [auditStatus, setAuditStatus] = useState<string | null>(null);
   const [isLoadingAudit, setIsLoadingAudit] = useState(false);
-  const [isProfileEditorOpen, setIsProfileEditorOpen] = useState(false);
   const [newUser, setNewUser] = useState({
     username: "",
     firstName: "",
@@ -157,13 +142,45 @@ export default function SettingsPage() {
   });
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    void loadSession();
-  }, []);
+  const canConfigureAuth = useMemo(() => hasPermission(user, "settings.write"), [user]);
+
+  const loadUsers = useCallback(async (nextEditingId?: string | null) => {
+    if (!user || !hasPermission(user, "users.manage")) {
+      return;
+    }
+    const response = await fetch("/api/users");
+    if (!response.ok) {
+      return;
+    }
+    const data = (await response.json()) as UsersResponse;
+    setUsers(data.users);
+    setUserPasswordDrafts({});
+    setUserUpdateStatus(null);
+    setEditingUserId(nextEditingId ?? null);
+  }, [user]);
+
+  const loadAuthProviders = useCallback(async () => {
+    if (!canConfigureAuth) {
+      return;
+    }
+    const response = await fetch("/api/settings/auth");
+    if (!response.ok) {
+      setAuthStatus("Failed to load auth providers.");
+      return;
+    }
+    const data = (await response.json()) as AuthProvidersResponse;
+    setAuthDraft(data.settings ?? defaultAuthProviders);
+    setAuthStatus(null);
+  }, [canConfigureAuth]);
 
   useEffect(() => {
     if (user) {
-      void loadSettings();
+      setIsLoading(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (user) {
       if (hasPermission(user, "users.manage")) {
         void loadUsers();
       }
@@ -171,12 +188,17 @@ export default function SettingsPage() {
         void loadAuthProviders();
       }
     }
-  }, [user]);
+  }, [user, loadUsers, loadAuthProviders]);
+
+  useEffect(() => {
+    if (settings) {
+      setSettingsDraft(settings);
+    }
+  }, [settings]);
 
   const canViewSettings = useMemo(() => hasPermission(user, "settings.read"), [user]);
   const canManageUsers = useMemo(() => hasPermission(user, "users.manage"), [user]);
   const canReadAudit = useMemo(() => hasPermission(user, "audit.read"), [user]);
-  const canConfigureAuth = useMemo(() => hasPermission(user, "settings.write"), [user]);
   const auditPageCount = Math.max(1, Math.ceil(auditTotal / auditPageSize));
   const settingsTabItems = useMemo(() => {
     const items: Array<{ value: TabKey; label: string }> = [{ value: "users", label: "Users" }];
@@ -242,11 +264,29 @@ export default function SettingsPage() {
     }
   }, [activeTab, canReadAudit]);
 
+  const loadAuditLogs = useCallback(async () => {
+    if (!canReadAudit) {
+      return;
+    }
+    setIsLoadingAudit(true);
+    setAuditStatus(null);
+    const response = await fetch(`/api/audit?page=${auditPage}&pageSize=${auditPageSize}`);
+    if (!response.ok) {
+      setIsLoadingAudit(false);
+      setAuditStatus("Failed to load audit log.");
+      return;
+    }
+    const data = (await response.json()) as AuditLogResponse;
+    setAuditLogs(data.logs ?? []);
+    setAuditTotal(data.total ?? 0);
+    setIsLoadingAudit(false);
+  }, [canReadAudit, auditPage, auditPageSize]);
+
   useEffect(() => {
     if (activeTab === "audit" && canReadAudit) {
       void loadAuditLogs();
     }
-  }, [activeTab, canReadAudit, auditPage, auditPageSize]);
+  }, [activeTab, canReadAudit, loadAuditLogs]);
 
   useEffect(() => {
     if (auditPage > auditPageCount) {
@@ -255,6 +295,7 @@ export default function SettingsPage() {
   }, [auditPage, auditPageCount]);
 
   const hasInvalidLabels = useMemo(() => {
+    if (!settingsDraft) return false;
     const missingPrometheus = settingsDraft.prometheusSources.some(
       (source) => source.url && !source.name.trim()
     );
@@ -266,41 +307,6 @@ export default function SettingsPage() {
     );
     return missingPrometheus || missingZabbix || missingKuma;
   }, [settingsDraft]);
-
-  async function loadSession() {
-    const response = await fetch("/api/auth/me");
-    if (!response.ok) {
-      setIsLoading(false);
-      router.push("/");
-      return;
-    }
-    const data = (await response.json()) as UserResponse;
-    setUser(data.user);
-    setProfileDraft({
-      firstName: data.user.firstName,
-      lastName: data.user.lastName,
-      username: data.user.username,
-      email: data.user.email,
-      avatarUrl: data.user.avatarUrl ?? "",
-      password: ""
-    });
-    setIsLoading(false);
-  }
-
-  async function loadSettings() {
-    const response = await fetch("/api/settings");
-    if (!response.ok) {
-      return;
-    }
-    const data = (await response.json()) as SettingsResponse;
-    setSettingsDraft(data.settings);
-    setCanEditSettings(data.canEdit);
-  }
-
-  async function handleLogout() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    router.push("/");
-  }
 
   async function saveSettings() {
     setSettingsStatus(null);
@@ -317,68 +323,6 @@ export default function SettingsPage() {
     const data = (await response.json()) as SettingsResponse;
     setSettingsDraft(data.settings);
     setSettingsStatus("Settings saved.");
-  }
-
-  async function saveProfile() {
-    setProfileStatus(null);
-    const payload = {
-      ...profileDraft,
-      password: profileDraft.password.trim() === "" ? undefined : profileDraft.password
-    };
-    const response = await fetch("/api/auth/profile", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-    if (!response.ok) {
-      const data = await response.json();
-      setProfileStatus(data.error ?? "Failed to update profile");
-      return;
-    }
-    const data = (await response.json()) as UserResponse;
-    setUser(data.user);
-    setProfileDraft({
-      firstName: data.user.firstName,
-      lastName: data.user.lastName,
-      username: data.user.username,
-      email: data.user.email,
-      avatarUrl: data.user.avatarUrl ?? "",
-      password: ""
-    });
-    setProfileStatus("Profile updated.");
-  }
-
-  async function loadUsers(nextEditingId?: string | null) {
-    if (!user || !hasPermission(user, "users.manage")) {
-      return;
-    }
-    const response = await fetch("/api/users");
-    if (!response.ok) {
-      return;
-    }
-    const data = (await response.json()) as UsersResponse;
-    setUsers(data.users);
-    setUserPasswordDrafts({});
-    setUserUpdateStatus(null);
-    setEditingUserId(nextEditingId ?? null);
-  }
-
-  async function loadAuditLogs() {
-    if (!canReadAudit) {
-      return;
-    }
-    setIsLoadingAudit(true);
-    setAuditStatus(null);
-    const response = await fetch(`/api/audit?page=${auditPage}&pageSize=${auditPageSize}`);
-    if (!response.ok) {
-      setIsLoadingAudit(false);
-      setAuditStatus("Failed to load audit log.");
-      return;
-    }
-    const data = (await response.json()) as AuditLogResponse;
-    setAuditLogs(data.logs ?? []);
-    setAuditTotal(data.total ?? 0);
-    setIsLoadingAudit(false);
   }
 
   async function createNewUser(overrides?: Partial<typeof newUser>) {
@@ -596,20 +540,6 @@ export default function SettingsPage() {
     }));
   }
 
-  async function loadAuthProviders() {
-    if (!canConfigureAuth) {
-      return;
-    }
-    const response = await fetch("/api/settings/auth");
-    if (!response.ok) {
-      setAuthStatus("Failed to load auth providers.");
-      return;
-    }
-    const data = (await response.json()) as AuthProvidersResponse;
-    setAuthDraft(data.settings ?? defaultAuthProviders);
-    setAuthStatus(null);
-  }
-
   async function saveAuthProviders() {
     if (!canConfigureAuth) {
       return;
@@ -628,53 +558,6 @@ export default function SettingsPage() {
     setAuthStatus("Auth providers saved.");
   }
 
-  async function startTwoFactorSetup() {
-    setTwoFactorStatus(null);
-    const response = await fetch("/api/auth/2fa/setup");
-    const data = await response.json();
-    if (!response.ok) {
-      setTwoFactorStatus(data.error ?? "Failed to start 2FA setup.");
-      return;
-    }
-    setTwoFactorSetupSecret(data.secret ?? null);
-    setTwoFactorStatus("Add the key to your authenticator app, then enter a code.");
-    setTwoFactorCode("");
-  }
-
-  async function confirmTwoFactorSetup() {
-    const response = await fetch("/api/auth/2fa/setup", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code: twoFactorCode })
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      setTwoFactorStatus(data.error ?? "Failed to enable 2FA.");
-      return;
-    }
-    setTwoFactorSetupSecret(null);
-    setTwoFactorCode("");
-    setTwoFactorStatus("Two-factor authentication enabled.");
-    setUser(data.user);
-  }
-
-  async function disableTwoFactorForProfile() {
-    const response = await fetch("/api/auth/2fa/disable", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code: twoFactorCode })
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      setTwoFactorStatus(data.error ?? "Failed to disable 2FA.");
-      return;
-    }
-    setTwoFactorSetupSecret(null);
-    setTwoFactorCode("");
-    setTwoFactorStatus("Two-factor authentication disabled.");
-    setUser(data.user);
-  }
-
   if (isLoading || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4 sm:px-6">
@@ -686,131 +569,100 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row">
-      <Sidebar
-        user={user}
-        onLogout={handleLogout}
-        onOpenProfileEditor={() => setIsProfileEditorOpen(true)}
-        settingsTabs={{
-          items: settingsTabItems,
-          active: activeTab,
-          onChange: (value) => setActiveTab(value as TabKey)
-        }}
-      />
-      <div className="flex-1 min-w-0 border-l border-[rgb(var(--app-divider)/0.82)] bg-[rgb(var(--app-main-bg))]">
-        <main className="w-full min-h-screen px-4 pb-6 pt-2 sm:px-6 lg:px-6">
-          <div className="mx-auto w-full max-w-[1520px]">
-          {activeTab === "data" && canViewSettings ? (
-            <DataSourcesSection
-              headerRight={<UserGreetingPill user={user} />}
-              settingsDraft={settingsDraft}
-              setSettingsDraft={setSettingsDraft}
-              canEditSettings={canEditSettings}
-              hasInvalidLabels={hasInvalidLabels}
-              settingsStatus={settingsStatus}
-              testResults={testResults}
-              onSave={saveSettings}
-              createPrometheusSource={createPrometheusSource}
-              createZabbixSource={createZabbixSource}
-              createKumaSource={createKumaSource}
-              updatePrometheusSource={updatePrometheusSource}
-              updateZabbixSource={updateZabbixSource}
-              updateKumaSource={updateKumaSource}
-              testSource={testSource}
-              testKey={testKey}
-            />
-          ) : null}
+    <main className="w-full min-h-screen px-4 pb-6 pt-2 sm:px-6 lg:px-6">
+      <div className="mx-auto w-full max-w-[1520px]">
+        {activeTab === "data" && canViewSettings ? (
+          <DataSourcesSection
+            headerRight={<UserGreetingPill user={user} />}
+            settingsDraft={settingsDraft}
+            setSettingsDraft={setSettingsDraft}
+            canEditSettings={canEditSettings}
+            hasInvalidLabels={hasInvalidLabels}
+            settingsStatus={settingsStatus}
+            testResults={testResults}
+            onSave={saveSettings}
+            createPrometheusSource={createPrometheusSource}
+            createZabbixSource={createZabbixSource}
+            createKumaSource={createKumaSource}
+            updatePrometheusSource={updatePrometheusSource}
+            updateZabbixSource={updateZabbixSource}
+            updateKumaSource={updateKumaSource}
+            testSource={testSource}
+            testKey={testKey}
+          />
+        ) : null}
 
-          {activeTab === "appearance" && canViewSettings ? (
-            <AppearanceSection
-              headerRight={<UserGreetingPill user={user} />}
-              settingsDraft={settingsDraft}
-              setSettingsDraft={setSettingsDraft}
-              canEditSettings={canEditSettings}
-              settingsStatus={settingsStatus}
-              isAdmin={canConfigureAuth}
-              onSave={saveSettings}
-              onUpdateAppearance={updateAppearance}
-              onUpdateBranding={updateBranding}
-              onUpdateBackground={updateBackground}
-              onAssetUpload={handleAssetUpload}
-              onSetTheme={setTheme}
-            />
-          ) : null}
+        {activeTab === "appearance" && canViewSettings ? (
+          <AppearanceSection
+            headerRight={<UserGreetingPill user={user} />}
+            settingsDraft={settingsDraft}
+            setSettingsDraft={setSettingsDraft}
+            canEditSettings={canEditSettings}
+            settingsStatus={settingsStatus}
+            isAdmin={canConfigureAuth}
+            onSave={saveSettings}
+            onUpdateAppearance={updateAppearance}
+            onUpdateBranding={updateBranding}
+            onUpdateBackground={updateBackground}
+            onAssetUpload={handleAssetUpload}
+            onSetTheme={setTheme}
+          />
+        ) : null}
 
-          {activeTab === "audit" && canReadAudit ? (
-            <AuditSection
-              headerRight={<UserGreetingPill user={user} />}
-              auditLogs={auditLogs}
-              auditStatus={auditStatus}
-              isLoadingAudit={isLoadingAudit}
-              auditTotal={auditTotal}
-              auditPage={auditPage}
-              auditPageSize={auditPageSize}
-              auditPageCount={auditPageCount}
-              onPageSizeChange={(value) => {
-                setAuditPageSize(value);
-                setAuditPage(1);
-              }}
-              onPrevPage={() => setAuditPage((prev) => Math.max(prev - 1, 1))}
-              onNextPage={() =>
-                setAuditPage((prev) => Math.min(prev + 1, auditPageCount))
-              }
-              onRefresh={() => void loadAuditLogs()}
-              formatAuditDetails={formatAuditDetails}
-            />
-          ) : null}
+        {activeTab === "audit" && canReadAudit ? (
+          <AuditSection
+            headerRight={<UserGreetingPill user={user} />}
+            auditLogs={auditLogs}
+            auditStatus={auditStatus}
+            isLoadingAudit={isLoadingAudit}
+            auditTotal={auditTotal}
+            auditPage={auditPage}
+            auditPageSize={auditPageSize}
+            auditPageCount={auditPageCount}
+            onPageSizeChange={(value) => {
+              setAuditPageSize(value);
+              setAuditPage(1);
+            }}
+            onPrevPage={() => setAuditPage((prev) => Math.max(prev - 1, 1))}
+            onNextPage={() =>
+              setAuditPage((prev) => Math.min(prev + 1, auditPageCount))
+            }
+            onRefresh={() => void loadAuditLogs()}
+            formatAuditDetails={formatAuditDetails}
+          />
+        ) : null}
 
-          {activeTab === "access" && canConfigureAuth ? (
-            <AuthProvidersSection
-              headerRight={<UserGreetingPill user={user} />}
-              authDraft={authDraft}
-              setAuthDraft={setAuthDraft}
-              authStatus={authStatus}
-              onSave={saveAuthProviders}
-            />
-          ) : null}
+        {activeTab === "access" && canConfigureAuth ? (
+          <AuthProvidersSection
+            headerRight={<UserGreetingPill user={user} />}
+            authDraft={authDraft}
+            setAuthDraft={setAuthDraft}
+            authStatus={authStatus}
+            onSave={saveAuthProviders}
+          />
+        ) : null}
 
-          {activeTab === "users" ? (
-            <UsersSection
-              headerRight={<UserGreetingPill user={user} />}
-              isAdmin={canManageUsers}
-              newUser={newUser}
-              setNewUser={setNewUser}
-              onCreateUser={createNewUser}
-              userStatus={userStatus}
-              users={users}
-              editingUserId={editingUserId}
-              setEditingUserId={setEditingUserId}
-              userUpdateStatus={userUpdateStatus}
-              updateUserDraft={updateUserDraft}
-              userPasswordDrafts={userPasswordDrafts}
-              setUserPasswordDrafts={setUserPasswordDrafts}
-              onSaveUserDetails={saveUserDetails}
-              onResetUser={() => void loadUsers()}
-              onDeleteUser={deleteUserById}
-            />
-          ) : null}
-          </div>
-        </main>
+        {activeTab === "users" ? (
+          <UsersSection
+            headerRight={<UserGreetingPill user={user} />}
+            isAdmin={canManageUsers}
+            newUser={newUser}
+            setNewUser={setNewUser}
+            onCreateUser={createNewUser}
+            userStatus={userStatus}
+            users={users}
+            editingUserId={editingUserId}
+            setEditingUserId={setEditingUserId}
+            userUpdateStatus={userUpdateStatus}
+            updateUserDraft={updateUserDraft}
+            userPasswordDrafts={userPasswordDrafts}
+            setUserPasswordDrafts={setUserPasswordDrafts}
+            onSaveUserDetails={saveUserDetails}
+            onResetUser={() => void loadUsers()}
+            onDeleteUser={deleteUserById}
+          />
+        ) : null}
       </div>
-
-      <ProfileEditorModal
-        isOpen={isProfileEditorOpen}
-        onClose={() => setIsProfileEditorOpen(false)}
-        profileDraft={profileDraft}
-        setProfileDraft={setProfileDraft}
-        profileStatus={profileStatus}
-        onSaveProfile={saveProfile}
-        twoFactorEnabled={Boolean(user.twoFactorEnabled)}
-        twoFactorStatus={twoFactorStatus}
-        twoFactorCode={twoFactorCode}
-        setTwoFactorCode={setTwoFactorCode}
-        twoFactorSetupSecret={twoFactorSetupSecret}
-        onStartTwoFactorSetup={startTwoFactorSetup}
-        onConfirmTwoFactorSetup={confirmTwoFactorSetup}
-        onDisableTwoFactor={disableTwoFactorForProfile}
-      />
-    </div>
+    </main>
   );
 }

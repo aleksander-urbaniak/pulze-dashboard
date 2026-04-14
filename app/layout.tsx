@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { DM_Sans, Space_Grotesk } from "next/font/google";
 
 import ThemeProvider from "../components/ThemeProvider";
+import AppShell from "../components/AppShell";
 import AppearanceProvider from "../components/AppearanceProvider";
 import "./globals.css";
 
@@ -27,7 +28,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${display.variable} ${body.variable}`} suppressHydrationWarning>
       <body>
         <ThemeProvider>
-          <AppearanceProvider>{children}</AppearanceProvider>
+          <AppearanceProvider>
+            <AppShell>{children}</AppShell>
+          </AppearanceProvider>
         </ThemeProvider>
       </body>
     </html>

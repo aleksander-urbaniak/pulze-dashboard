@@ -19,11 +19,10 @@ import {
   faUsers
 } from "@fortawesome/free-solid-svg-icons";
 
+import { useAppSession } from "../lib/app-session";
 import ThemeToggle from "./ThemeToggle";
-import type { User } from "../lib/types";
 
 interface SidebarProps {
-  user: User;
   onLogout?: () => void;
   onOpenProfileEditor?: () => void;
   settingsTabs?: {
@@ -57,15 +56,10 @@ const staticSettingsItems = [
 const appVersion = process.env.NEXT_PUBLIC_APP_VERSION ?? "v1.0.0";
 const sidebarCollapseKey = "pulze.sidebar.collapsed";
 
-export default function Sidebar({
-  user,
-  onLogout,
-  onOpenProfileEditor,
-  settingsTabs
-}: SidebarProps) {
+export default function Sidebar({ onLogout, onOpenProfileEditor, settingsTabs }: SidebarProps) {
+  const { user } = useAppSession();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const initials = `${user.firstName?.[0] ?? ""}${user.lastName?.[0] ?? ""}`.toUpperCase();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(() => {
     if (typeof window === "undefined") {
@@ -74,8 +68,23 @@ export default function Sidebar({
     const saved = window.localStorage.getItem(sidebarCollapseKey);
     return saved === "true";
   });
-  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
-  const profileMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.localStorage.setItem(sidebarCollapseKey, String(isCollapsed));
+  }, [isCollapsed]);
+
+  if (!user) {
+    return null;
+  }
+
+  const initials = `${user.firstName?.[0] ?? ""}${user.lastName?.[0] ?? ""}`.toUpperCase();
   const configurationItems = staticSettingsItems.filter((item) => {
     if (item.value === "data" || item.value === "appearance") {
       return user.permissions?.includes("settings.read");
@@ -88,30 +97,6 @@ export default function Sidebar({
     }
     return true;
   });
-
-  useEffect(() => {
-    setIsMobileMenuOpen(false);
-    setIsProfileMenuOpen(false);
-  }, [pathname]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    window.localStorage.setItem(sidebarCollapseKey, String(isCollapsed));
-  }, [isCollapsed]);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (!profileMenuRef.current?.contains(event.target as Node)) {
-        setIsProfileMenuOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, []);
 
   return (
     <aside
@@ -268,20 +253,12 @@ export default function Sidebar({
           )}
         >
           <div
-            ref={profileMenuRef}
             className="relative"
           >
             <button
               type="button"
               title={`${user.firstName} ${user.lastName} - ${user.email}`}
-              onClick={() => {
-                if (onOpenProfileEditor) {
-                  setIsProfileMenuOpen(false);
-                  onOpenProfileEditor();
-                  return;
-                }
-                setIsProfileMenuOpen((prev) => !prev);
-              }}
+              onClick={onOpenProfileEditor}
               className={clsx(
                 "w-full rounded-xl text-left transition hover:bg-white/5",
                 isCollapsed ? "flex items-center justify-center p-0" : "px-1 py-0.5"
@@ -321,47 +298,7 @@ export default function Sidebar({
                 ) : null}
               </div>
             </button>
-
-            <div
-              className={clsx(
-                "absolute z-40 w-52 rounded-2xl border border-[rgb(var(--app-divider)/0.9)] bg-[rgb(var(--surface)/0.92)] p-1.5 shadow-[0_20px_44px_-26px_rgba(0,0,0,0.9)] backdrop-blur transition duration-200 ease-out",
-                isCollapsed ? "left-1/2 bottom-full mb-1 -translate-x-1/2" : "left-0 bottom-full mb-1",
-                isProfileMenuOpen
-                  ? "pointer-events-auto translate-y-0 opacity-100"
-                  : "pointer-events-none translate-y-2 opacity-0"
-              )}
-            >
-              <button
-                type="button"
-                onClick={() => {
-                  setIsProfileMenuOpen(false);
-                  onOpenProfileEditor?.();
-                }}
-                className="radius-ui flex w-full items-center gap-2 px-3 py-2 text-sm text-muted hover:bg-white/5 hover:text-text"
-              >
-                <FontAwesomeIcon icon={faUserGear} className="h-4 w-4 shrink-0" />
-                Edit Profile
-              </button>
-            </div>
           </div>
-
-          {onOpenProfileEditor ? (
-            <button
-              type="button"
-              onClick={() => {
-                setIsProfileMenuOpen(false);
-                onOpenProfileEditor();
-              }}
-              title={isCollapsed ? "Edit Profile" : undefined}
-              className={clsx(
-                "radius-ui flex w-full items-center px-3 py-2 text-sm text-muted hover:bg-white/5 hover:text-text",
-                isCollapsed ? "justify-center md:h-10 md:w-10 md:px-0" : "gap-2"
-              )}
-            >
-              <FontAwesomeIcon icon={faUserGear} className="h-4 w-4 shrink-0" />
-              {!isCollapsed ? "Edit Profile" : null}
-            </button>
-          ) : null}
 
           {onLogout ? (
             <button
