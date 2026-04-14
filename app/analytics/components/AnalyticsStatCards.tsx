@@ -17,21 +17,21 @@ type AnalyticsStatCardsProps = {
 
 export default function AnalyticsStatCards({ statCards }: AnalyticsStatCardsProps) {
   return (
-    <div className="mt-6 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
       {statCards.map((card) => (
         <div
           key={card.id}
-          className="rounded-2xl border border-border bg-surface/90 p-4 shadow-card backdrop-blur sm:p-5"
+          className="rounded-xl border border-border bg-surface/92 p-4 shadow-card"
         >
           <div className="flex items-start justify-between gap-3">
-            <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${card.bg} ${card.color}`}>
+            <div className={`flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-base/35 ${card.bg} ${card.color}`}>
               {card.icon}
             </div>
             <div
               className={
                 card.trend === "up"
-                  ? "flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-600"
-                  : "flex items-center gap-1 rounded-full bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-600"
+                  ? "flex items-center gap-1 rounded-md border border-emerald-400/25 bg-emerald-500/12 px-2 py-1 text-xs font-semibold text-emerald-300"
+                  : "flex items-center gap-1 rounded-md border border-rose-400/25 bg-rose-500/12 px-2 py-1 text-xs font-semibold text-rose-300"
               }
             >
               {card.trend === "up" ? (
@@ -58,8 +58,8 @@ export default function AnalyticsStatCards({ statCards }: AnalyticsStatCardsProp
               {card.change}
             </div>
           </div>
-          <p className="mt-4 text-sm text-muted">{card.title}</p>
-          <p className="mt-1 text-2xl font-semibold">{card.value}</p>
+          <p className="mt-3 text-xs text-muted">{card.title}</p>
+          <p className="mt-1 text-xl font-semibold text-text">{card.value}</p>
         </div>
       ))}
     </div>

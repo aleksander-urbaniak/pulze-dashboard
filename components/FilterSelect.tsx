@@ -109,7 +109,7 @@ export default function FilterSelect({
         role="listbox"
         aria-hidden={!open}
         className={clsx(
-          "absolute left-0 mt-2 min-w-full origin-top rounded-2xl border border-border bg-surface/95 p-1 shadow-card backdrop-blur transition duration-200 ease-in-out z-50 max-h-64 overflow-y-auto",
+          "absolute left-0 mt-2 min-w-full origin-top rounded-xl border border-border bg-surface/95 p-1 shadow-[0_24px_48px_-30px_rgba(0,0,0,0.95)] backdrop-blur transition duration-200 ease-in-out z-50 max-h-64 overflow-y-auto",
           open
             ? "visible pointer-events-auto translate-y-0 scale-100 opacity-100"
             : "invisible pointer-events-none -translate-y-1 scale-95 opacity-0",
@@ -127,12 +127,12 @@ export default function FilterSelect({
               aria-selected={isSelected}
               onClick={() => handleSelect(option.value)}
               className={clsx(
-                "dropdown-option w-full rounded-xl px-3 py-2 text-left transition-colors",
+                "dropdown-option w-full rounded-lg px-3 py-2 text-left transition-colors",
                 isSelected
-                  ? "bg-accent text-white"
+                  ? "bg-accent/15 text-accent"
                   : isPlaceholder
-                    ? "text-muted hover:bg-base/70"
-                    : "text-text hover:bg-base/70",
+                    ? "text-muted hover:bg-base/45"
+                    : "text-text hover:bg-base/45",
                 optionClassName
               )}
             >

@@ -1,14 +1,28 @@
-import type { User } from "../../../lib/types";
-import type { UserRole } from "../../../lib/types";
+import { Fragment, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import clsx from "clsx";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  faCircleUser,
+  faEllipsisVertical,
+  faKey,
+  faLock,
+  faMagnifyingGlass,
+  faPlus,
+  faShieldHalved,
+  faTrashCan,
+  faUsers,
+  faXmark
+} from "@fortawesome/free-solid-svg-icons";
 
-type ProfileDraft = {
-  firstName: string;
-  lastName: string;
-  username: string;
-  email: string;
-  avatarUrl: string;
-  password: string;
-};
+import PageSectionHeader from "../../../components/PageSectionHeader";
+import type { User, UserRole } from "../../../lib/types";
+import {
+  settingsFieldClass,
+  settingsLabelClass,
+  settingsMutedButton,
+  settingsShellCard,
+  settingsPrimaryButton
+} from "./theme";
 
 type NewUserDraft = {
   username: string;
@@ -19,49 +33,69 @@ type NewUserDraft = {
   role: UserRole;
 };
 
+type GroupDraft = { id: string; name: string; defaultRole: UserRole; isSystem: boolean };
+
 type UsersSectionProps = {
+  headerRight?: React.ReactNode;
   isAdmin: boolean;
-  profileDraft: ProfileDraft;
-  setProfileDraft: React.Dispatch<React.SetStateAction<ProfileDraft>>;
-  profileStatus: string | null;
-  onSaveProfile: () => void;
-  twoFactorEnabled: boolean;
-  twoFactorStatus: string | null;
-  twoFactorCode: string;
-  setTwoFactorCode: React.Dispatch<React.SetStateAction<string>>;
-  twoFactorSetupSecret: string | null;
-  onStartTwoFactorSetup: () => void;
-  onConfirmTwoFactorSetup: () => void;
-  onDisableTwoFactor: () => void;
   newUser: NewUserDraft;
-  setNewUser: React.Dispatch<React.SetStateAction<NewUserDraft>>;
-  onCreateUser: () => void;
+  setNewUser: Dispatch<SetStateAction<NewUserDraft>>;
+  onCreateUser: (overrides?: Partial<NewUserDraft>) => void;
   userStatus: string | null;
   users: User[];
   editingUserId: string | null;
-  setEditingUserId: React.Dispatch<React.SetStateAction<string | null>>;
+  setEditingUserId: Dispatch<SetStateAction<string | null>>;
   userUpdateStatus: string | null;
   updateUserDraft: (id: string, updates: Partial<User>) => void;
   userPasswordDrafts: Record<string, string>;
-  setUserPasswordDrafts: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  setUserPasswordDrafts: Dispatch<SetStateAction<Record<string, string>>>;
   onSaveUserDetails: (entry: User) => void;
   onResetUser: (id: string) => void;
+  onDeleteUser: (id: string) => void;
 };
 
+const roles: UserRole[] = ["admin", "manager", "operator", "auditor", "viewer"];
+const roleLabel = (role: UserRole) => role.charAt(0).toUpperCase() + role.slice(1);
+const roleGroupName = (role: UserRole) =>
+  role === "admin"
+    ? "Admins"
+    : role === "manager"
+      ? "Managers"
+      : role === "operator"
+        ? "Operators"
+        : role === "auditor"
+          ? "Auditors"
+          : "Viewers";
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label className="space-y-2">
+      <span className={settingsLabelClass}>{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function FooterBar({ count }: { count: number }) {
+  return (
+    <footer className="flex items-center justify-between border-t border-[#1d2f4c] bg-white/[0.04] px-4 py-4 md:px-6">
+      <p className="text-sm font-semibold text-slate-400">Showing {count ? "1" : "0"} to {count} of {count}</p>
+      <div className="flex items-center gap-2">
+        <button type="button" className={clsx(settingsMutedButton, "h-10 px-5 py-0 opacity-60")} disabled>
+          Previous
+        </button>
+        <span className="text-sm font-semibold text-slate-300">Page 1 of 1</span>
+        <button type="button" className={clsx(settingsMutedButton, "h-10 px-5 py-0 opacity-60")} disabled>
+          Next
+        </button>
+      </div>
+    </footer>
+  );
+}
+
 export default function UsersSection({
+  headerRight,
   isAdmin,
-  profileDraft,
-  setProfileDraft,
-  profileStatus,
-  onSaveProfile,
-  twoFactorEnabled,
-  twoFactorStatus,
-  twoFactorCode,
-  setTwoFactorCode,
-  twoFactorSetupSecret,
-  onStartTwoFactorSetup,
-  onConfirmTwoFactorSetup,
-  onDisableTwoFactor,
   newUser,
   setNewUser,
   onCreateUser,
@@ -74,318 +108,366 @@ export default function UsersSection({
   userPasswordDrafts,
   setUserPasswordDrafts,
   onSaveUserDetails,
-  onResetUser
+  onResetUser,
+  onDeleteUser
 }: UsersSectionProps) {
-  return (
-    <section className="mt-8 space-y-6">
-      <div className="rounded-3xl border border-border bg-surface/90 p-4 shadow-card backdrop-blur sm:p-6">
-        <p className="text-xs uppercase tracking-[0.3em] text-muted">Profile</p>
-        <h2 className="text-2xl font-semibold">Account Settings</h2>
-        {profileStatus ? <p className="mt-3 text-sm text-muted">{profileStatus}</p> : null}
-        <div className="mt-4 space-y-3">
-          <input
-            value={profileDraft.firstName}
-            onChange={(event) => setProfileDraft({ ...profileDraft, firstName: event.target.value })}
-            placeholder="First name"
-            className="w-full rounded-xl border border-border bg-base/60 px-4 py-2 text-sm"
-          />
-          <input
-            value={profileDraft.lastName}
-            onChange={(event) => setProfileDraft({ ...profileDraft, lastName: event.target.value })}
-            placeholder="Last name"
-            className="w-full rounded-xl border border-border bg-base/60 px-4 py-2 text-sm"
-          />
-          <input
-            value={profileDraft.username}
-            onChange={(event) => setProfileDraft({ ...profileDraft, username: event.target.value })}
-            placeholder="Username"
-            className="w-full rounded-xl border border-border bg-base/60 px-4 py-2 text-sm"
-          />
-          <input
-            value={profileDraft.email}
-            onChange={(event) => setProfileDraft({ ...profileDraft, email: event.target.value })}
-            placeholder="Email"
-            className="w-full rounded-xl border border-border bg-base/60 px-4 py-2 text-sm"
-          />
-          <input
-            value={profileDraft.avatarUrl}
-            onChange={(event) => setProfileDraft({ ...profileDraft, avatarUrl: event.target.value })}
-            placeholder="Avatar URL"
-            className="w-full rounded-xl border border-border bg-base/60 px-4 py-2 text-sm"
-          />
-          <input
-            type="password"
-            value={profileDraft.password}
-            onChange={(event) => setProfileDraft({ ...profileDraft, password: event.target.value })}
-            placeholder="New password"
-            className="w-full rounded-xl border border-border bg-base/60 px-4 py-2 text-sm"
-          />
-          <button
-            type="button"
-            onClick={onSaveProfile}
-            className="w-full rounded-xl bg-accent py-2 text-sm font-semibold text-white"
-          >
-            Update Profile
-          </button>
-          <div className="rounded-2xl border border-border bg-base/40 p-4">
-            <p className="text-xs uppercase tracking-[0.3em] text-muted">Security</p>
-            <div className="mt-2 flex items-center justify-between gap-3">
-              <p className="text-sm">Two-factor authentication</p>
-              <span className="rounded-full border border-border px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] text-muted">
-                {twoFactorEnabled ? "Enabled" : "Disabled"}
-              </span>
-            </div>
-            {twoFactorStatus ? <p className="mt-2 text-xs text-muted">{twoFactorStatus}</p> : null}
-            {twoFactorSetupSecret ? (
-              <div className="mt-3 space-y-2">
-                <p className="text-xs text-muted">
-                  Add this key in your authenticator app:
-                </p>
-                <p className="rounded-lg border border-border bg-base/60 px-3 py-2 font-mono text-xs">
-                  {twoFactorSetupSecret}
-                </p>
-                <input
-                  value={twoFactorCode}
-                  onChange={(event) => setTwoFactorCode(event.target.value)}
-                  placeholder="Enter 6-digit code"
-                  className="w-full rounded-xl border border-border bg-base/60 px-4 py-2 text-sm"
-                />
-                <button
-                  type="button"
-                  onClick={onConfirmTwoFactorSetup}
-                  className="w-full rounded-xl border border-border py-2 text-sm font-semibold"
-                >
-                  Confirm 2FA Setup
-                </button>
-              </div>
-            ) : (
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                {!twoFactorEnabled ? (
-                  <button
-                    type="button"
-                    onClick={onStartTwoFactorSetup}
-                    className="rounded-xl border border-border px-3 py-2 text-xs uppercase tracking-[0.2em]"
-                  >
-                    Enable 2FA
-                  </button>
-                ) : (
-                  <>
-                    <input
-                      value={twoFactorCode}
-                      onChange={(event) => setTwoFactorCode(event.target.value)}
-                      placeholder="6-digit code"
-                      className="rounded-xl border border-border bg-base/60 px-3 py-2 text-sm"
-                    />
-                    <button
-                      type="button"
-                      onClick={onDisableTwoFactor}
-                      className="rounded-xl border border-border px-3 py-2 text-xs uppercase tracking-[0.2em]"
-                    >
-                      Disable 2FA
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+  const [searchUserTerm, setSearchUserTerm] = useState("");
+  const [searchGroupTerm, setSearchGroupTerm] = useState("");
+  const [isCreateUserModalOpen, setIsCreateUserModalOpen] = useState(false);
+  const [isCreateGroupModalOpen, setIsCreateGroupModalOpen] = useState(false);
+  const [groupIdForNewUser, setGroupIdForNewUser] = useState("");
+  const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupRole, setNewGroupRole] = useState<UserRole>("viewer");
+  const [customGroups, setCustomGroups] = useState<GroupDraft[]>([]);
+  const [hiddenSystemIds, setHiddenSystemIds] = useState<string[]>([]);
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const [groupDrafts, setGroupDrafts] = useState<Record<string, { name: string; defaultRole: UserRole }>>({});
 
-      {!isAdmin ? (
-        <div className="rounded-3xl border border-border bg-surface/90 p-8 text-sm text-muted shadow-card">
-          Your role does not include user management.
-        </div>
-      ) : (
-        <>
-          <div className="rounded-3xl border border-border bg-surface/90 p-4 shadow-card backdrop-blur sm:p-6">
-            <p className="text-xs uppercase tracking-[0.3em] text-muted">Users</p>
-            <h2 className="text-2xl font-semibold">Manage Accounts</h2>
-            {userStatus ? <p className="mt-3 text-sm text-muted">{userStatus}</p> : null}
-            <div className="mt-4 grid gap-3 md:grid-cols-3">
-              <input
-                value={newUser.firstName}
-                onChange={(event) => setNewUser({ ...newUser, firstName: event.target.value })}
-                placeholder="First name"
-                className="rounded-xl border border-border bg-base/60 px-4 py-2 text-sm"
-              />
-              <input
-                value={newUser.lastName}
-                onChange={(event) => setNewUser({ ...newUser, lastName: event.target.value })}
-                placeholder="Last name"
-                className="rounded-xl border border-border bg-base/60 px-4 py-2 text-sm"
-              />
-              <input
-                value={newUser.username}
-                onChange={(event) => setNewUser({ ...newUser, username: event.target.value })}
-                placeholder="Username"
-                className="rounded-xl border border-border bg-base/60 px-4 py-2 text-sm"
-              />
-              <input
-                value={newUser.email}
-                onChange={(event) => setNewUser({ ...newUser, email: event.target.value })}
-                placeholder="Email"
-                className="rounded-xl border border-border bg-base/60 px-4 py-2 text-sm"
-              />
-              <input
-                type="password"
-                value={newUser.password}
-                onChange={(event) => setNewUser({ ...newUser, password: event.target.value })}
-                placeholder="Password"
-                className="rounded-xl border border-border bg-base/60 px-4 py-2 text-sm"
-              />
-              <select
-                value={newUser.role}
-                onChange={(event) =>
-                  setNewUser({ ...newUser, role: event.target.value as UserRole })
-                }
-                className="rounded-xl border border-border bg-base/60 px-4 py-2 text-sm"
-              >
-                <option value="viewer">Viewer</option>
-                <option value="operator">Operator</option>
-                <option value="manager">Manager</option>
-                <option value="auditor">Auditor</option>
-                <option value="admin">Admin</option>
-              </select>
-            </div>
-            <button
-              type="button"
-              onClick={onCreateUser}
-              className="mt-4 rounded-full bg-accent px-4 py-2 text-xs uppercase tracking-[0.2em] text-white"
-            >
-              Create User
+  const filteredUsers = useMemo(() => {
+    const q = searchUserTerm.trim().toLowerCase();
+    if (!q) return users;
+    return users.filter((u) =>
+      `${u.firstName} ${u.lastName}`.toLowerCase().includes(q) ||
+      u.username.toLowerCase().includes(q) ||
+      u.email.toLowerCase().includes(q)
+    );
+  }, [searchUserTerm, users]);
+
+  const systemGroups = useMemo(() => {
+    const seen = new Set<string>();
+    return users.reduce<GroupDraft[]>((acc, u) => {
+      const id = `system:${u.role}`;
+      if (!seen.has(id)) {
+        seen.add(id);
+        acc.push({ id, name: roleGroupName(u.role), defaultRole: u.role, isSystem: true });
+      }
+      return acc;
+    }, []);
+  }, [users]);
+
+  const groups = useMemo(() => {
+    const visibleSystem = systemGroups
+      .filter((g) => !hiddenSystemIds.includes(g.id))
+      .map((g) => ({ ...g, ...(groupDrafts[g.id] ?? {}) }));
+    return [...visibleSystem, ...customGroups].sort((a, b) => a.name.localeCompare(b.name));
+  }, [systemGroups, hiddenSystemIds, groupDrafts, customGroups]);
+
+  const filteredGroups = useMemo(() => {
+    const q = searchGroupTerm.trim().toLowerCase();
+    if (!q) return groups;
+    return groups.filter((g) => g.name.toLowerCase().includes(q) || g.defaultRole.toLowerCase().includes(q));
+  }, [groups, searchGroupTerm]);
+
+  const groupMembers = useMemo(() => {
+    const count = new Map<string, number>();
+    groups.forEach((g) => count.set(g.id, users.filter((u) => u.role === g.defaultRole).length));
+    return count;
+  }, [groups, users]);
+
+  useEffect(() => {
+    if (!groupIdForNewUser && groups.length > 0) setGroupIdForNewUser(groups[0].id);
+  }, [groupIdForNewUser, groups]);
+
+  if (!isAdmin) {
+    return (
+      <section className="space-y-4">
+        <PageSectionHeader
+          icon={faUsers}
+          title="Users & Groups"
+          subtitle="Manage users, groups, and access roles."
+          right={headerRight}
+        />
+        <p className="text-sm text-slate-500">Your role does not include user management.</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="space-y-4">
+      <PageSectionHeader
+        icon={faUsers}
+        title="Users & Groups"
+        subtitle="Manage users, groups, and access roles."
+        right={headerRight}
+      />
+      {userStatus ? <p className="text-xs text-slate-400">{userStatus}</p> : null}
+      {userUpdateStatus ? <p className="text-xs text-slate-400">{userUpdateStatus}</p> : null}
+
+      <article className={clsx(settingsShellCard, "overflow-hidden")}>
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[#1d2f4c] px-5 py-4 md:px-6">
+          <h3 className="text-[2.1rem] font-semibold text-text">{filteredUsers.length} user</h3>
+          <div className="flex w-full flex-wrap justify-end gap-2 md:w-auto">
+            <label className="relative min-w-[220px] flex-1 md:flex-none">
+              <FontAwesomeIcon icon={faMagnifyingGlass} className="absolute left-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
+              <input value={searchUserTerm} onChange={(e) => setSearchUserTerm(e.target.value)} placeholder="Search users..." className={clsx(settingsFieldClass, "h-11 pl-11")} />
+            </label>
+            <button type="button" className={clsx(settingsPrimaryButton, "h-11 px-5 text-xs")} onClick={() => setIsCreateUserModalOpen(true)}>
+              <FontAwesomeIcon icon={faPlus} className="mr-2 h-3.5 w-3.5" />
+              Create new user
             </button>
           </div>
-
-          <div className="rounded-3xl border border-border bg-surface/90 p-4 shadow-card backdrop-blur sm:p-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <h3 className="text-lg font-semibold">Existing Users</h3>
-              {userUpdateStatus ? <p className="text-xs text-muted">{userUpdateStatus}</p> : null}
-            </div>
-            <div className="mt-4 space-y-4">
-              {users.map((entry) => {
-                const isEditing = editingUserId === entry.id;
-                return (
-                  <div key={entry.id} className="rounded-2xl border border-border bg-base/40 p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div>
-                        <p className="font-semibold">
-                          {entry.firstName} {entry.lastName}
-                        </p>
-                        <p className="text-xs text-muted">
-                          {entry.username} - {entry.email}
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="rounded-full border border-border bg-base/60 px-3 py-1 text-xs uppercase tracking-[0.2em] text-muted">
-                          {entry.role}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setEditingUserId((prev) => (prev === entry.id ? null : entry.id))
-                          }
-                          className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em]"
-                        >
-                          {isEditing ? "Close" : "Edit"}
-                        </button>
-                      </div>
+        </header>
+        <div className="grid grid-cols-[minmax(320px,1fr)_170px_210px_220px] border-b border-[#1d2f4c] bg-white/[0.04] px-5 py-3 text-[11px] font-bold uppercase tracking-[0.26em] text-slate-400 md:px-6">
+          <span>User</span>
+          <span className="border-l border-[#1d2f4c] text-center">Role</span>
+          <span className="border-l border-[#1d2f4c] text-center">2FA</span>
+          <span className="border-l border-[#1d2f4c] text-center">Actions</span>
+        </div>
+        <div className="divide-y divide-[#1d2f4c]">
+          {filteredUsers.map((u) => {
+            const editing = editingUserId === u.id;
+            return (
+              <div key={u.id} className="grid grid-cols-[minmax(320px,1fr)_170px_210px_220px] items-center px-5 py-4 md:px-6">
+                <div className="grid min-w-0 grid-cols-[36px_minmax(0,1fr)] items-center gap-x-2">
+                  <div className="relative h-9 w-9">
+                    <div className="radius-pill flex h-9 w-9 items-center justify-center overflow-hidden border border-[#2a4269] bg-base/35 text-[11px] font-bold shadow-[0_0_0_1px_rgb(8_23_42)]">
+                      <FontAwesomeIcon icon={faShieldHalved} className="h-3.5 w-3.5 text-accent" />
                     </div>
-                    {isEditing ? (
-                      <div className="mt-4 space-y-3">
-                        <div className="grid gap-3 md:grid-cols-2">
-                          <input
-                            value={entry.firstName}
-                            onChange={(event) =>
-                              updateUserDraft(entry.id, { firstName: event.target.value })
-                            }
-                            placeholder="First name"
-                            className="rounded-xl border border-border bg-base/60 px-4 py-2 text-sm"
-                          />
-                          <input
-                            value={entry.lastName}
-                            onChange={(event) =>
-                              updateUserDraft(entry.id, { lastName: event.target.value })
-                            }
-                            placeholder="Last name"
-                            className="rounded-xl border border-border bg-base/60 px-4 py-2 text-sm"
-                          />
-                          <input
-                            value={entry.username}
-                            onChange={(event) =>
-                              updateUserDraft(entry.id, { username: event.target.value })
-                            }
-                            placeholder="Username"
-                            className="rounded-xl border border-border bg-base/60 px-4 py-2 text-sm"
-                          />
-                          <input
-                            value={entry.email}
-                            onChange={(event) =>
-                              updateUserDraft(entry.id, { email: event.target.value })
-                            }
-                            placeholder="Email"
-                            className="rounded-xl border border-border bg-base/60 px-4 py-2 text-sm"
-                          />
-                          <input
-                            value={entry.avatarUrl ?? ""}
-                            onChange={(event) =>
-                              updateUserDraft(entry.id, { avatarUrl: event.target.value })
-                            }
-                            placeholder="Avatar URL"
-                            className="rounded-xl border border-border bg-base/60 px-4 py-2 text-sm"
-                          />
-                          <input
-                            type="password"
-                            value={userPasswordDrafts[entry.id] ?? ""}
-                            onChange={(event) =>
-                              setUserPasswordDrafts((prev) => ({
-                                ...prev,
-                                [entry.id]: event.target.value
-                              }))
-                            }
-                            placeholder="New password (optional)"
-                            className="rounded-xl border border-border bg-base/60 px-4 py-2 text-sm"
-                          />
-                          <select
-                            value={entry.role}
-                              onChange={(event) =>
-                                updateUserDraft(entry.id, {
-                                  role: event.target.value as UserRole
-                                })
-                              }
-                              className="rounded-xl border border-border bg-base/60 px-4 py-2 text-sm"
-                            >
-                              <option value="viewer">Viewer</option>
-                              <option value="operator">Operator</option>
-                              <option value="manager">Manager</option>
-                              <option value="auditor">Auditor</option>
-                              <option value="admin">Admin</option>
-                            </select>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => onSaveUserDetails(entry)}
-                            className="rounded-full border border-border px-4 py-2 text-xs uppercase tracking-[0.2em]"
-                          >
-                            Save changes
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => onResetUser(entry.id)}
-                            className="rounded-full border border-border px-4 py-2 text-xs uppercase tracking-[0.2em] text-muted"
-                          >
-                            Reset
-                          </button>
-                        </div>
-                      </div>
-                    ) : null}
                   </div>
-                );
-              })}
+                  <div className="min-w-0">
+                    <div className="truncate text-[1rem] font-semibold leading-tight text-text">{u.firstName} {u.lastName}</div>
+                    <div className="truncate text-[11px] leading-tight text-muted">@{u.username}</div>
+                  </div>
+                </div>
+                <div className="flex items-center justify-center border-l border-[#1d2f4c]">
+                  <span className="inline-flex w-fit rounded-lg bg-[#17316e] px-3 py-1 text-sm font-semibold text-[#E8EFFB]">{u.role}</span>
+                </div>
+                <div className="flex items-center justify-center border-l border-[#1d2f4c]">
+                  <span className={clsx("inline-flex w-fit items-center gap-2 rounded-lg px-3 py-1 text-sm font-semibold", u.twoFactorEnabled ? "bg-emerald-500/20 text-emerald-300" : "bg-rose-500/20 text-rose-300")}>
+                    <FontAwesomeIcon icon={faLock} className="h-3 w-3" />{u.twoFactorEnabled ? "2FA enabled" : "2FA disabled"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-center gap-1.5 border-l border-[#1d2f4c]">
+                  {editing ? (
+                    <Fragment>
+                      <button type="button" onClick={() => onSaveUserDetails(u)} className={clsx(settingsPrimaryButton, "h-9 px-3 py-0 text-[10px]")}>Save</button>
+                      <button type="button" onClick={() => { onResetUser(u.id); setEditingUserId(null); }} className={clsx(settingsMutedButton, "h-9 px-3 py-0")}>Cancel</button>
+                    </Fragment>
+                  ) : (
+                    <Fragment>
+                      <button type="button" onClick={() => onDeleteUser(u.id)} className={clsx(settingsMutedButton, "inline-flex h-9 w-9 items-center justify-center px-0 py-0 leading-none text-slate-400 hover:text-rose-300")} title="Delete user"><FontAwesomeIcon icon={faTrashCan} className="h-3.5 w-3.5" /></button>
+                      <button type="button" onClick={() => setEditingUserId(u.id)} className={clsx(settingsMutedButton, "inline-flex h-9 w-9 items-center justify-center px-0 py-0 leading-none text-slate-400")} title="Edit user"><FontAwesomeIcon icon={faEllipsisVertical} className="h-3.5 w-3.5" /></button>
+                    </Fragment>
+                  )}
+                </div>
+                <div
+                  className={clsx(
+                    "col-span-4 grid overflow-hidden transition-all duration-300 [transition-timing-function:linear]",
+                    editing ? "mt-4 max-h-[520px] border-t border-[#1d2f4c] pt-4 opacity-100" : "max-h-0 border-t border-transparent pt-0 opacity-0"
+                  )}
+                >
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <Field label="First Name"><input value={u.firstName} onChange={(e) => updateUserDraft(u.id, { firstName: e.target.value })} className={settingsFieldClass} /></Field>
+                    <Field label="Last Name"><input value={u.lastName} onChange={(e) => updateUserDraft(u.id, { lastName: e.target.value })} className={settingsFieldClass} /></Field>
+                    <Field label="Username"><input value={u.username} onChange={(e) => updateUserDraft(u.id, { username: e.target.value })} className={settingsFieldClass} /></Field>
+                    <Field label="Email"><input value={u.email} onChange={(e) => updateUserDraft(u.id, { email: e.target.value })} className={settingsFieldClass} /></Field>
+                    <Field label="Reset Password">
+                      <div className="relative">
+                        <FontAwesomeIcon icon={faKey} className="absolute left-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
+                        <input type="password" value={userPasswordDrafts[u.id] ?? ""} onChange={(e) => setUserPasswordDrafts((p) => ({ ...p, [u.id]: e.target.value }))} className={clsx(settingsFieldClass, "pl-11")} placeholder="Leave empty to keep current password" />
+                      </div>
+                    </Field>
+                    <Field label="Role">
+                      <select
+                        value={u.role}
+                        onChange={(e) => updateUserDraft(u.id, { role: e.target.value as UserRole })}
+                        className={clsx(settingsFieldClass, "h-10 py-0")}
+                      >
+                        {roles.map((r) => (
+                          <option key={r} value={r}>
+                            {roleLabel(r)}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {filteredUsers.length === 0 ? <div className="px-5 py-8 text-sm text-slate-500 md:px-6">No users found.</div> : null}
+        </div>
+        <FooterBar count={filteredUsers.length} />
+      </article>
+
+      <article className={clsx(settingsShellCard, "overflow-hidden")}>
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[#1d2f4c] px-5 py-4 md:px-6">
+          <h3 className="text-[2.1rem] font-semibold text-text">{filteredGroups.length} groups</h3>
+          <div className="flex w-full flex-wrap justify-end gap-2 md:w-auto">
+            <label className="relative min-w-[220px] flex-1 md:flex-none">
+              <FontAwesomeIcon icon={faMagnifyingGlass} className="absolute left-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-500" />
+              <input value={searchGroupTerm} onChange={(e) => setSearchGroupTerm(e.target.value)} placeholder="Search groups..." className={clsx(settingsFieldClass, "h-11 pl-11")} />
+            </label>
+            <button type="button" className={clsx(settingsPrimaryButton, "h-11 px-5 text-xs")} onClick={() => setIsCreateGroupModalOpen(true)}>
+              <FontAwesomeIcon icon={faPlus} className="mr-2 h-3.5 w-3.5" />
+              Create new group
+            </button>
+          </div>
+        </header>
+        <div className="grid grid-cols-[minmax(280px,1fr)_120px_180px_220px] border-b border-[#1d2f4c] bg-white/[0.04] px-5 py-3 text-[11px] font-bold uppercase tracking-[0.26em] text-slate-400 md:px-6">
+          <span>Group</span>
+          <span className="border-l border-[#1d2f4c] text-center">Members</span>
+          <span className="border-l border-[#1d2f4c] text-center">Default role</span>
+          <span className="border-l border-[#1d2f4c] text-center">Actions</span>
+        </div>
+        <div className="divide-y divide-[#1d2f4c]">
+          {filteredGroups.map((g) => {
+            const editing = editingGroupId === g.id;
+            const draft = groupDrafts[g.id] ?? { name: g.name, defaultRole: g.defaultRole };
+            return (
+              <div key={g.id} className="grid grid-cols-[minmax(280px,1fr)_120px_180px_220px] items-center px-5 py-4 md:px-6">
+                <div className="flex items-center gap-2.5">
+                  <FontAwesomeIcon icon={faUsers} className="h-3.5 w-3.5 text-slate-500" />
+                  <span className="text-xl font-semibold text-text">{g.name}</span>
+                </div>
+                <div className="flex items-center justify-center border-l border-[#1d2f4c]">
+                  <span className="text-lg text-slate-200">{groupMembers.get(g.id) ?? 0}</span>
+                </div>
+                <div className="flex items-center justify-center border-l border-[#1d2f4c]">
+                  <span className="inline-flex w-fit rounded-lg bg-[#17316e] px-3 py-1 text-sm font-semibold text-[#E8EFFB]">
+                    {g.defaultRole}
+                  </span>
+                </div>
+                <div className="flex items-center justify-center gap-2 border-l border-[#1d2f4c]">
+                  {editing ? (
+                    <button type="button" onClick={() => setEditingGroupId(null)} className={clsx(settingsMutedButton, "h-9 px-3 py-0")}>Cancel</button>
+                  ) : (
+                    <Fragment>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!window.confirm(`Delete group "${g.name}"? This action cannot be undone.`)) return;
+                          setCustomGroups((p) => p.filter((x) => x.id !== g.id));
+                          if (g.isSystem) setHiddenSystemIds((p) => [...p, g.id]);
+                        }}
+                        className={clsx(settingsMutedButton, "inline-flex h-9 w-9 items-center justify-center px-0 py-0 leading-none text-slate-400 hover:text-rose-300")}
+                        title="Delete group"
+                      >
+                        <FontAwesomeIcon icon={faTrashCan} className="h-3.5 w-3.5" />
+                      </button>
+                      <button type="button" onClick={() => { setEditingGroupId(g.id); setGroupDrafts((p) => ({ ...p, [g.id]: { name: g.name, defaultRole: g.defaultRole } })); }} className={clsx(settingsMutedButton, "inline-flex h-9 w-9 items-center justify-center px-0 py-0 leading-none text-slate-400")} title="Edit group">
+                        <FontAwesomeIcon icon={faEllipsisVertical} className="h-3.5 w-3.5" />
+                      </button>
+                    </Fragment>
+                  )}
+                </div>
+                <div
+                  className={clsx(
+                    "col-span-4 grid overflow-hidden transition-all duration-300 [transition-timing-function:linear]",
+                    editing ? "mt-4 max-h-[360px] border-t border-[#1d2f4c] pt-4 opacity-100" : "max-h-0 border-t border-transparent pt-0 opacity-0"
+                  )}
+                >
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <Field label="Group Name">
+                      <input
+                        value={draft.name}
+                        onChange={(e) =>
+                          setGroupDrafts((p) => ({ ...p, [g.id]: { ...draft, name: e.target.value } }))
+                        }
+                        className={settingsFieldClass}
+                      />
+                    </Field>
+                    <Field label="Default Role">
+                      <select
+                        value={draft.defaultRole}
+                        onChange={(e) =>
+                          setGroupDrafts((p) => ({
+                            ...p,
+                            [g.id]: { ...draft, defaultRole: e.target.value as UserRole }
+                          }))
+                        }
+                        className={settingsFieldClass}
+                      >
+                        {roles.map((r) => (
+                          <option key={r} value={r}>
+                            {roleLabel(r)}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                    <div className="col-span-2 flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setEditingGroupId(null)}
+                        className={clsx(settingsMutedButton, "h-9 px-3 py-0")}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!draft.name.trim()) return;
+                          setCustomGroups((p) =>
+                            p.map((x) =>
+                              x.id === g.id
+                                ? { ...x, name: draft.name.trim(), defaultRole: draft.defaultRole }
+                                : x
+                            )
+                          );
+                          setGroupDrafts((p) => ({
+                            ...p,
+                            [g.id]: { name: draft.name.trim(), defaultRole: draft.defaultRole }
+                          }));
+                          setEditingGroupId(null);
+                        }}
+                        className={clsx(settingsPrimaryButton, "h-9 px-3 py-0 text-[10px]")}
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {filteredGroups.length === 0 ? <div className="px-5 py-8 text-sm text-slate-500 md:px-6">No groups found.</div> : null}
+        </div>
+        <FooterBar count={filteredGroups.length} />
+      </article>
+
+      {isCreateUserModalOpen ? (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-[#030814]/55 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-xl rounded-[20px] border border-[#1b2f4d] bg-[#061224] p-5">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-4xl font-semibold text-text">Create new user</h3>
+              <button type="button" onClick={() => setIsCreateUserModalOpen(false)} className={clsx(settingsMutedButton, "inline-flex h-9 w-9 items-center justify-center px-0 py-0 leading-none")}><FontAwesomeIcon icon={faXmark} className="h-4 w-4" /></button>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <Field label="First Name"><div className="relative"><FontAwesomeIcon icon={faCircleUser} className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" /><input value={newUser.firstName} onChange={(e) => setNewUser((p) => ({ ...p, firstName: e.target.value }))} className={clsx(settingsFieldClass, "pl-11")} placeholder="First name" /></div></Field>
+              <Field label="Last Name"><div className="relative"><FontAwesomeIcon icon={faCircleUser} className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" /><input value={newUser.lastName} onChange={(e) => setNewUser((p) => ({ ...p, lastName: e.target.value }))} className={clsx(settingsFieldClass, "pl-11")} placeholder="Last name" /></div></Field>
+              <Field label="Username"><div className="relative"><FontAwesomeIcon icon={faCircleUser} className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" /><input value={newUser.username} onChange={(e) => setNewUser((p) => ({ ...p, username: e.target.value }))} className={clsx(settingsFieldClass, "pl-11")} placeholder="Username" /></div></Field>
+              <Field label="Email"><input value={newUser.email} onChange={(e) => setNewUser((p) => ({ ...p, email: e.target.value }))} className={settingsFieldClass} placeholder="email@example.com" /></Field>
+              <Field label="Existing Group"><select value={groupIdForNewUser} onChange={(e) => setGroupIdForNewUser(e.target.value)} className={settingsFieldClass}>{groups.map((g) => <option key={g.id} value={g.id}>{g.name} ({g.defaultRole})</option>)}</select></Field>
+              <Field label="Password"><div className="relative"><FontAwesomeIcon icon={faKey} className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" /><input type="password" value={newUser.password} onChange={(e) => setNewUser((p) => ({ ...p, password: e.target.value }))} className={clsx(settingsFieldClass, "pl-11")} placeholder="Password" /></div></Field>
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button type="button" onClick={() => { const group = groups.find((g) => g.id === groupIdForNewUser); onCreateUser({ role: group?.defaultRole ?? newUser.role }); setIsCreateUserModalOpen(false); }} className={clsx(settingsPrimaryButton, "h-11 px-6 text-xs")}>Create</button>
             </div>
           </div>
-        </>
-      )}
+        </div>
+      ) : null}
+
+      {isCreateGroupModalOpen ? (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-[#030814]/55 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-[20px] border border-[#1b2f4d] bg-[#061224] p-5">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-4xl font-semibold text-text">Create new group</h3>
+              <button type="button" onClick={() => setIsCreateGroupModalOpen(false)} className={clsx(settingsMutedButton, "inline-flex h-9 w-9 items-center justify-center px-0 py-0 leading-none")}><FontAwesomeIcon icon={faXmark} className="h-4 w-4" /></button>
+            </div>
+            <div className="grid gap-3">
+              <Field label="Group Name"><input value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} className={settingsFieldClass} placeholder="SRE Team" /></Field>
+              <Field label="Default Role">
+                <select value={newGroupRole} onChange={(e) => setNewGroupRole(e.target.value as UserRole)} className={settingsFieldClass}>
+                  {roles.map((r) => <option key={r} value={r}>{roleLabel(r)}</option>)}
+                </select>
+              </Field>
+            </div>
+            <div className="mt-4 flex justify-end">
+              <button type="button" onClick={() => { const name = newGroupName.trim(); if (!name) return; const id = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `group_${Math.random().toString(36).slice(2)}`; setCustomGroups((p) => [...p, { id, name, defaultRole: newGroupRole, isSystem: false }]); setNewGroupName(""); setNewGroupRole("viewer"); setIsCreateGroupModalOpen(false); }} className={clsx(settingsPrimaryButton, "h-11 px-6 text-xs")}>Create</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

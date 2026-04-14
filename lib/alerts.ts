@@ -317,6 +317,58 @@ export async function fetchPrometheusAlerts(settings: SettingsRow): Promise<Aler
 }
 
 async function fetchZabbixFromSource(source: ZabbixSource): Promise<Alert[]> {
+  const result = await fetchZabbixProblems(source);
+  return result.map((problem) => {
+    const severity = normalizeSeverity(problem.priority);
+    return toAlert({
+      source: "Zabbix",
+      sourceId: source.id,
+      sourceLabel: source.name,
+      name: problem.name,
+      severity,
+      message: withSourceName(`${problem.host} - ${problem.name}`, source.name),
+      timestamp: problem.timestamp,
+      instance: problem.host,
+      service: problem.host,
+      environment: "",
+      fingerprint: problem.triggerId,
+      idParts: [source.id, problem.problemId || problem.triggerId, problem.triggerId]
+    });
+  });
+}
+
+export async function fetchZabbixSourceAlerts(source: ZabbixSource): Promise<Alert[]> {
+  return fetchZabbixFromSource(source);
+}
+
+type ZabbixProblemEntry = {
+  problemId: string;
+  triggerId: string;
+  host: string;
+  name: string;
+  priority: string;
+  timestamp: string;
+};
+
+function zabbixTimestampToIso(input: unknown) {
+  const raw = Number(input);
+  if (!Number.isFinite(raw) || raw <= 0) {
+    return null;
+  }
+  return new Date(raw * 1000).toISOString();
+}
+
+function isZabbixMethodMissing(error: Error) {
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("method not found") ||
+    message.includes("unsupported method") ||
+    message.includes("invalid params") ||
+    message.includes("-32601")
+  );
+}
+
+async function callZabbixRpc(source: ZabbixSource, method: string, params: Record<string, unknown>) {
   const url = appendPath(source.url, "/zabbix/api_jsonrpc.php");
   const response = await fetch(url, {
     method: "POST",
@@ -326,12 +378,8 @@ async function fetchZabbixFromSource(source: ZabbixSource): Promise<Alert[]> {
     },
     body: JSON.stringify({
       jsonrpc: "2.0",
-      method: "trigger.get",
-      params: {
-        output: ["description", "priority", "lastchange", "triggerid"],
-        selectHosts: ["host"],
-        filter: { value: 1 }
-      },
+      method,
+      params,
       id: 1
     }),
     cache: "no-store"
@@ -340,34 +388,120 @@ async function fetchZabbixFromSource(source: ZabbixSource): Promise<Alert[]> {
   if (!response.ok) {
     throw new Error(`Request failed with ${response.status}`);
   }
-  const data = (await parseJsonResponse(response)) as any;
-  const result = Array.isArray(data?.result) ? data.result : [];
+
+  const data = (await parseJsonResponse(response)) as {
+    result?: unknown;
+    error?: { code?: number; message?: string; data?: string };
+  };
+  if (data?.error) {
+    const code = data.error.code ?? "unknown";
+    const message = data.error.message ?? "Request failed";
+    const details = data.error.data ? `: ${data.error.data}` : "";
+    throw new Error(`Zabbix API error (${code}): ${message}${details}`);
+  }
+  return data?.result;
+}
+
+async function fetchZabbixViaProblemGet(source: ZabbixSource): Promise<ZabbixProblemEntry[]> {
+  const rawProblems = await callZabbixRpc(source, "problem.get", {
+    output: ["eventid", "objectid", "name", "severity", "clock"],
+    source: 0,
+    object: 0,
+    recent: false
+  });
+  const problems = Array.isArray(rawProblems) ? rawProblems : [];
+  if (problems.length === 0) {
+    return [];
+  }
+
+  const triggerIds = Array.from(
+    new Set(
+      problems
+        .map((problem: any) => String(problem?.objectid ?? "").trim())
+        .filter(Boolean)
+    )
+  );
+  if (triggerIds.length === 0) {
+    return [];
+  }
+
+  const rawTriggers = await callZabbixRpc(source, "trigger.get", {
+    output: ["triggerid", "description", "priority", "lastchange"],
+    selectHosts: ["host"],
+    triggerids: triggerIds,
+    monitored: true,
+    active: true,
+    skipDependent: true
+  });
+  const triggers = Array.isArray(rawTriggers) ? rawTriggers : [];
+  const triggerMap = new Map<string, any>(
+    triggers.map((trigger: any) => [String(trigger?.triggerid ?? ""), trigger])
+  );
+
+  return problems
+    .map((problem: any) => {
+      const triggerId = String(problem?.objectid ?? "").trim();
+      if (!triggerId) {
+        return null;
+      }
+      const trigger = triggerMap.get(triggerId);
+      if (!trigger) {
+        return null;
+      }
+      const host = trigger?.hosts?.[0]?.host ?? "unknown";
+      const name = String(problem?.name ?? trigger?.description ?? "Trigger");
+      const timestamp =
+        zabbixTimestampToIso(problem?.clock) ??
+        zabbixTimestampToIso(trigger?.lastchange) ??
+        new Date().toISOString();
+      return {
+        problemId: String(problem?.eventid ?? ""),
+        triggerId,
+        host,
+        name,
+        priority: String(problem?.severity ?? trigger?.priority ?? ""),
+        timestamp
+      } satisfies ZabbixProblemEntry;
+    })
+    .filter(Boolean) as ZabbixProblemEntry[];
+}
+
+async function fetchZabbixViaTriggerGet(source: ZabbixSource): Promise<ZabbixProblemEntry[]> {
+  const raw = await callZabbixRpc(source, "trigger.get", {
+    output: ["description", "priority", "lastchange", "triggerid"],
+    selectHosts: ["host"],
+    filter: { value: 1 },
+    monitored: true,
+    active: true,
+    skipDependent: true
+  });
+  const result = Array.isArray(raw) ? raw : [];
   return result.map((trigger: any) => {
     const host = trigger?.hosts?.[0]?.host ?? "unknown";
     const name = trigger?.description ?? "Trigger";
-    const severity = normalizeSeverity(String(trigger?.priority ?? ""));
-    const timestamp = trigger?.lastchange
-      ? new Date(Number(trigger.lastchange) * 1000).toISOString()
-      : new Date().toISOString();
-    return toAlert({
-      source: "Zabbix",
-      sourceId: source.id,
-      sourceLabel: source.name,
+    const timestamp =
+      zabbixTimestampToIso(trigger?.lastchange) ??
+      new Date().toISOString();
+    return {
+      problemId: "",
+      triggerId: String(trigger?.triggerid ?? ""),
+      host,
       name,
-      severity,
-      message: withSourceName(`${host} - ${name}`, source.name),
-      timestamp,
-      instance: host,
-      service: host,
-      environment: "",
-      fingerprint: String(trigger?.triggerid ?? ""),
-      idParts: [source.id, trigger?.triggerid, host, name, timestamp]
-    });
+      priority: String(trigger?.priority ?? ""),
+      timestamp
+    };
   });
 }
 
-export async function fetchZabbixSourceAlerts(source: ZabbixSource): Promise<Alert[]> {
-  return fetchZabbixFromSource(source);
+async function fetchZabbixProblems(source: ZabbixSource): Promise<ZabbixProblemEntry[]> {
+  try {
+    return await fetchZabbixViaProblemGet(source);
+  } catch (error) {
+    if (error instanceof Error && isZabbixMethodMissing(error)) {
+      return fetchZabbixViaTriggerGet(source);
+    }
+    throw error;
+  }
 }
 
 function zabbixPriorityLabel(input: unknown) {
@@ -384,38 +518,14 @@ function zabbixPriorityLabel(input: unknown) {
 }
 
 export async function fetchZabbixTestLine(source: ZabbixSource): Promise<string | null> {
-  const url = appendPath(source.url, "/zabbix/api_jsonrpc.php");
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json-rpc",
-      ...(source.token ? { Authorization: `Bearer ${source.token}` } : {})
-    },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      method: "trigger.get",
-      params: {
-        output: ["description", "priority"],
-        selectHosts: ["host"],
-        filter: { value: 1 }
-      },
-      id: 1
-    }),
-    cache: "no-store"
-  });
-
-  if (!response.ok) {
-    throw new Error(`Request failed with ${response.status}`);
-  }
-  const data = (await parseJsonResponse(response)) as any;
-  const result = Array.isArray(data?.result) ? data.result : [];
-  const trigger = result[0];
-  if (!trigger) {
+  const problems = await fetchZabbixProblems(source);
+  const first = problems[0];
+  if (!first) {
     return null;
   }
-  const host = trigger?.hosts?.[0]?.host ?? "unknown";
-  const description = trigger?.description ?? "-";
-  const priority = zabbixPriorityLabel(trigger?.priority);
+  const host = first.host;
+  const description = first.name ?? "-";
+  const priority = zabbixPriorityLabel(first.priority);
   return `${host}\t${description}\t${priority}`;
 }
 

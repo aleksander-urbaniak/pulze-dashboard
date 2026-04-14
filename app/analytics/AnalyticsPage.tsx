@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import Sidebar from "../../components/Sidebar";
+import { useAppSession } from "../../lib/app-session";
 import {
   buildAnalyticsSummary,
   buildMonthOptions,
@@ -24,18 +24,16 @@ import NoisyAlertsCard from "./components/NoisyAlertsCard";
 import TeamSnapshots from "./components/TeamSnapshots";
 import AlertLogTable from "./components/AlertLogTable";
 
-type UserResponse = { user: User };
 type AlertResponse = { alerts: Alert[]; errors: Array<{ source: string; message: string }> };
 type AlertLogResponse = { alerts: Alert[]; total: number; page: number; pageSize: number };
 
 export default function AnalyticsPage() {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
+  const { user, settings } = useAppSession();
   const [isLoading, setIsLoading] = useState(true);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [alertLogEntries, setAlertLogEntries] = useState<Alert[]>([]);
   const [analyticsSummary, setAnalyticsSummary] = useState<AnalyticsSummary | null>(null);
-  const [settings, setSettings] = useState<Settings | null>(null);
   const [errors, setErrors] = useState<Array<{ source: string; message: string }>>([]);
   const [isLoadingAlerts, setIsLoadingAlerts] = useState(false);
   const [trendRange, setTrendRange] = useState<TrendRange>("14d");
@@ -46,8 +44,10 @@ export default function AnalyticsPage() {
   const [alertLogQuery, setAlertLogQuery] = useState("");
 
   useEffect(() => {
-    void loadSession();
-  }, []);
+    if (user) {
+      setIsLoading(false);
+    }
+  }, [user]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -87,13 +87,54 @@ export default function AnalyticsPage() {
     }
   }, [trendRange, trendMonth]);
 
+  const loadAlerts = useCallback(async () => {
+    setIsLoadingAlerts(true);
+    const response = await fetch("/api/alerts");
+    if (!response.ok) {
+      setIsLoadingAlerts(false);
+      return;
+    }
+    const data = (await response.json()) as AlertResponse;
+    setAlerts(data.alerts);
+    setErrors(data.errors ?? []);
+    setIsLoadingAlerts(false);
+  }, []);
+
+  const loadAnalyticsSummary = useCallback(async () => {
+    const response = await fetch("/api/analytics/summary");
+    if (!response.ok) {
+      return;
+    }
+    const data = (await response.json()) as { summary: AnalyticsSummary };
+    if (data.summary) {
+      setAnalyticsSummary(data.summary);
+    }
+  }, []);
+
+  const loadAlertLog = useCallback(async () => {
+    const query = new URLSearchParams({
+      page: String(alertLogPage),
+      pageSize: String(alertLogPageSize),
+      query: alertLogQuery
+    });
+    const response = await fetch(`/api/alerts/log?${query.toString()}`);
+    if (!response.ok) {
+      setAlertLogEntries([]);
+      return;
+    }
+    const data = (await response.json()) as AlertLogResponse & {
+      total: number;
+    };
+    setAlertLogEntries(data.alerts ?? []);
+    setAlertLogTotal(data.total ?? 0);
+  }, [alertLogPage, alertLogPageSize, alertLogQuery]);
+
   useEffect(() => {
     if (user) {
       void loadAlerts();
       void loadAnalyticsSummary();
-      void loadSettings();
     }
-  }, [user]);
+  }, [user, loadAlerts, loadAnalyticsSummary]);
 
   const alertLogPageCount = Math.max(1, Math.ceil(alertLogTotal / alertLogPageSize));
   const alertLogPageSafe = Math.min(alertLogPage, alertLogPageCount);
@@ -114,7 +155,7 @@ export default function AnalyticsPage() {
       return;
     }
     void loadAlertLog();
-  }, [user, alertLogPage, alertLogPageSize, alertLogQuery]);
+  }, [user, loadAlertLog]);
 
   const analytics = useMemo(
     () => analyticsSummary ?? buildAnalyticsSummary(alerts),
@@ -137,8 +178,8 @@ export default function AnalyticsPage() {
       value: alerts.length.toLocaleString(),
       change: activeDelta.text,
       trend: activeDelta.trend,
-      color: "text-rose-600",
-      bg: "bg-rose-100",
+      color: "text-rose-300",
+      bg: "bg-rose-500/15",
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
           <path d="M12 7v6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
@@ -158,8 +199,8 @@ export default function AnalyticsPage() {
       value: analytics.counts.currentDay.toLocaleString(),
       change: dayDelta.text,
       trend: dayDelta.trend,
-      color: "text-amber-600",
-      bg: "bg-amber-100",
+      color: "text-amber-300",
+      bg: "bg-amber-500/15",
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
           <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.6" />
@@ -178,8 +219,8 @@ export default function AnalyticsPage() {
       value: analytics.counts.currentMonth.toLocaleString(),
       change: monthDelta.text,
       trend: monthDelta.trend,
-      color: "text-sky-600",
-      bg: "bg-sky-100",
+      color: "text-cyan-300",
+      bg: "bg-cyan-500/15",
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
           <rect x="4" y="6" width="16" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" />
@@ -194,8 +235,8 @@ export default function AnalyticsPage() {
       value: analytics.counts.currentYear.toLocaleString(),
       change: yearDelta.text,
       trend: yearDelta.trend,
-      color: "text-emerald-600",
-      bg: "bg-emerald-100",
+      color: "text-emerald-300",
+      bg: "bg-emerald-500/15",
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
           <path
@@ -210,69 +251,6 @@ export default function AnalyticsPage() {
       )
     }
   ];
-
-  async function loadSession() {
-    const response = await fetch("/api/auth/me");
-    if (!response.ok) {
-      setIsLoading(false);
-      router.push("/");
-      return;
-    }
-    const data = (await response.json()) as UserResponse;
-    setUser(data.user);
-    setIsLoading(false);
-  }
-
-  async function loadAlerts() {
-    setIsLoadingAlerts(true);
-    const response = await fetch("/api/alerts");
-    if (!response.ok) {
-      setIsLoadingAlerts(false);
-      return;
-    }
-    const data = (await response.json()) as AlertResponse;
-    setAlerts(data.alerts);
-    setErrors(data.errors ?? []);
-    setIsLoadingAlerts(false);
-  }
-
-  async function loadAlertLog() {
-    const query = new URLSearchParams({
-      page: String(alertLogPage),
-      pageSize: String(alertLogPageSize),
-      query: alertLogQuery
-    });
-    const response = await fetch(`/api/alerts/log?${query.toString()}`);
-    if (!response.ok) {
-      setAlertLogEntries([]);
-      return;
-    }
-    const data = (await response.json()) as AlertLogResponse & {
-      total: number;
-    };
-    setAlertLogEntries(data.alerts ?? []);
-    setAlertLogTotal(data.total ?? 0);
-  }
-
-  async function loadAnalyticsSummary() {
-    const response = await fetch("/api/analytics/summary");
-    if (!response.ok) {
-      return;
-    }
-    const data = (await response.json()) as { summary: AnalyticsSummary };
-    if (data.summary) {
-      setAnalyticsSummary(data.summary);
-    }
-  }
-
-  async function loadSettings() {
-    const response = await fetch("/api/settings");
-    if (!response.ok) {
-      return;
-    }
-    const data = (await response.json()) as { settings: Settings };
-    setSettings(data.settings);
-  }
 
   function getAlertSourceUrl(alert: Alert) {
     if (!settings) {
@@ -300,15 +278,10 @@ export default function AnalyticsPage() {
     return null;
   }
 
-  async function handleLogout() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    router.push("/");
-  }
-
   if (isLoading || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4 sm:px-6">
-        <div className="rounded-3xl border border-border bg-surface/90 px-4 py-3 text-sm text-muted shadow-card sm:px-6 sm:py-4">
+        <div className="rounded-xl border border-[#c3d4e8] bg-white px-4 py-3 text-sm text-[#60748e] shadow-[0_16px_34px_-26px_rgba(8,30,64,0.28)] dark:border-[#1b2f4d] dark:bg-[#060f1f]/88 dark:text-slate-400 dark:shadow-card sm:px-6 sm:py-4">
           Loading analytics...
         </div>
       </div>
@@ -316,66 +289,71 @@ export default function AnalyticsPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row">
-      <Sidebar user={user} onLogout={handleLogout} />
-      <div className="flex-1 min-w-0">
-        <main className="mx-auto max-w-6xl px-5 py-8 sm:px-6 sm:py-10">
-          <AnalyticsHeader
-            isLoadingAlerts={isLoadingAlerts}
-            onRefresh={() => {
+    <main className="w-full min-h-screen border-l border-[rgb(var(--app-divider)/0.82)] bg-[rgb(var(--app-main-bg))] px-4 pb-6 pt-2 sm:px-6 lg:px-6">
+      <div className="mx-auto w-full max-w-[1520px]">
+        <AnalyticsHeader
+          user={user}
+        />
+        <div className="mt-3 flex justify-end">
+          <button
+            type="button"
+            onClick={() => {
               void loadAlerts();
               void loadAlertLog();
               void loadAnalyticsSummary();
             }}
-          />
+            className="btn-unified btn-unified-primary h-10 px-4"
+          >
+            {isLoadingAlerts ? "Refreshing" : "Refresh"}
+          </button>
+        </div>
 
-          {errors.length > 0 ? (
-            <div className="mt-4 rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-500">
-              {errors.map((error) => `${error.source}: ${error.message}`).join(" | ")}
-            </div>
-          ) : null}
-
-          <AnalyticsStatCards statCards={statCards} />
-
-          <div className="mt-6 grid gap-6 lg:grid-cols-[2fr_1fr]">
-            <AlertTrendSection
-              trendRange={trendRange}
-              onTrendRangeChange={setTrendRange}
-              trendMonth={trendMonth}
-              onTrendMonthChange={setTrendMonth}
-              monthOptions={monthOptions}
-              alertsCount={alerts.length}
-              trendData={trendData}
-              counts={analytics.counts}
-            />
-            <TopSourcesCard sources={analytics.topSources} />
+        {errors.length > 0 ? (
+          <div className="mt-4 rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-500">
+            {errors.map((error) => `${error.source}: ${error.message}`).join(" | ")}
           </div>
+        ) : null}
 
-          <div className="mt-8 grid gap-6 lg:grid-cols-[1.4fr_1fr]">
-            <HistoricalAnalyticsCard analytics={analytics} />
-            <NoisyAlertsCard alerts={analytics.topNoisyAlerts} />
-          </div>
+        <AnalyticsStatCards statCards={statCards} />
 
-          <TeamSnapshots teamStats={analytics.teamStats} />
-
-          <AlertLogTable
-            alertLogSlice={alertLogSlice}
-            alertLogQuery={alertLogQuery}
-            onQueryChange={setAlertLogQuery}
-            alertLogTotal={alertLogTotal}
-            alertLogPageSize={alertLogPageSize}
-            alertLogPageSafe={alertLogPageSafe}
-            alertLogPageCount={alertLogPageCount}
-            onPageSizeChange={(value) => {
-              setAlertLogPageSize(value);
-              setAlertLogPage(1);
-            }}
-            onPrevPage={() => setAlertLogPage((prev) => Math.max(1, prev - 1))}
-            onNextPage={() => setAlertLogPage((prev) => Math.min(alertLogPageCount, prev + 1))}
-            getAlertSourceUrl={getAlertSourceUrl}
+        <div className="mt-5 grid gap-4 lg:grid-cols-[2fr_1fr]">
+          <AlertTrendSection
+            trendRange={trendRange}
+            onTrendRangeChange={setTrendRange}
+            trendMonth={trendMonth}
+            onTrendMonthChange={setTrendMonth}
+            monthOptions={monthOptions}
+            alertsCount={alerts.length}
+            trendData={trendData}
+            counts={analytics.counts}
           />
-        </main>
+          <TopSourcesCard sources={analytics.topSources} />
+        </div>
+
+        <div className="mt-6 grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+          <HistoricalAnalyticsCard analytics={analytics} />
+          <NoisyAlertsCard alerts={analytics.topNoisyAlerts} />
+        </div>
+
+        <TeamSnapshots teamStats={analytics.teamStats} />
+
+        <AlertLogTable
+          alertLogSlice={alertLogSlice}
+          alertLogQuery={alertLogQuery}
+          onQueryChange={setAlertLogQuery}
+          alertLogTotal={alertLogTotal}
+          alertLogPageSize={alertLogPageSize}
+          alertLogPageSafe={alertLogPageSafe}
+          alertLogPageCount={alertLogPageCount}
+          onPageSizeChange={(value) => {
+            setAlertLogPageSize(value);
+            setAlertLogPage(1);
+          }}
+          onPrevPage={() => setAlertLogPage((prev) => Math.max(1, prev - 1))}
+          onNextPage={() => setAlertLogPage((prev) => Math.min(alertLogPageCount, prev + 1))}
+          getAlertSourceUrl={getAlertSourceUrl}
+        />
       </div>
-    </div>
+    </main>
   );
 }

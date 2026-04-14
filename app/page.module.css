@@ -1,8 +1,73 @@
 @config "../tailwind.config.ts";
 @reference "tailwindcss";
 
-.filterSelect {
-  @apply w-full rounded-xl border border-border bg-base/60 px-3 py-2 text-sm;
+.dashboardHeader {
+  @apply border-b border-[#152642] px-0 pb-4 pt-0;
+}
+
+.dashboardTopbar {
+  @apply flex flex-wrap items-center justify-between gap-3;
+}
+
+.dashboardOverline {
+  @apply text-[10px] font-semibold uppercase tracking-[0.24em] text-slate-500;
+}
+
+.dashboardTitleRow {
+  @apply mt-1.5 flex flex-wrap items-center gap-2;
+}
+
+.dashboardTitle {
+  @apply text-[2.2rem] font-semibold leading-none text-slate-100;
+}
+
+.severityPillCritical {
+  @apply rounded-md border border-rose-500/45 bg-rose-500/12 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-rose-300;
+}
+
+.severityPillWarning {
+  @apply rounded-md border border-amber-400/50 bg-amber-400/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-300;
+}
+
+.greetingPill {
+  @apply inline-flex items-center gap-2.5 rounded-full border border-[#1d2f4c] bg-[#050c1b]/80 px-3.5 py-2;
+}
+
+.initialsChip {
+  @apply inline-flex h-6 w-6 items-center justify-center rounded-full bg-cyan-300 text-[10px] font-bold text-[#03161a];
+}
+
+.kpiGrid {
+  @apply mt-5 grid grid-cols-1 gap-3.5;
+}
+
+.kpiCard {
+  @apply rounded-xl border px-4 py-3.5;
+  border-color: rgb(27 47 77);
+  background-color: rgb(6 15 31 / 0.88);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.02);
+}
+
+.kpiLabel {
+  @apply text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400;
+}
+
+.kpiIcon {
+  @apply inline-flex rounded-full border border-[#1d2f4c] bg-[#081325] p-1.5;
+}
+
+.kpiValue {
+  @apply mt-3 text-4xl font-semibold leading-none text-slate-100;
+}
+
+.kpiMeta {
+  @apply mt-1.5 text-[11px] text-cyan-200/80;
+}
+
+.toolbarShell {
+  @apply mt-5 flex flex-wrap items-center gap-2.5 rounded-xl border px-3 py-2.5;
+  border-color: rgb(27 47 77);
+  background-color: rgb(6 15 31 / 0.88);
 }
 
 .searchWrap {
@@ -10,48 +75,44 @@
 }
 
 .searchIcon {
-  @apply pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted;
+  @apply pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500;
 }
 
 .searchInput {
-  @apply w-full rounded-full border border-border bg-base/60 py-2 pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-accent/30;
+  @apply h-10 w-full rounded-lg border border-[#1d2f4c] bg-[#071021] py-2 pl-8 pr-3 text-[13px] text-slate-100;
 }
 
-.latestHeader {
-  @apply mt-8 grid items-center gap-4 rounded-2xl border border-border bg-surface/90 p-3;
-}
-
-.latestTitle {
-  @apply grid gap-2;
+.filterSelect {
+  @apply h-10 min-w-[9.5rem] rounded-lg border border-[#1d2f4c] bg-[#071021] px-3 py-2 text-[11px] uppercase tracking-[0.12em] text-slate-200;
 }
 
 .latestMiddle {
-  @apply flex w-full flex-wrap items-center gap-3;
+  @apply flex w-full flex-wrap items-center gap-2.5;
   min-width: 0;
 }
 
 .latestFilters {
-  @apply flex w-full flex-wrap items-center gap-3;
+  @apply flex w-full flex-wrap items-center gap-2.5;
 }
 
 .latestActions {
-  @apply flex w-full flex-wrap items-center gap-3;
+  @apply flex w-full flex-wrap items-center gap-2.5;
 }
 
 .viewToggle {
-  @apply flex w-full items-center justify-between rounded-full border border-border bg-base/60 p-1 text-xs uppercase tracking-[0.2em];
+  @apply flex items-center rounded-lg border border-[#1d2f4c] bg-[#071021] p-1 text-[11px] uppercase tracking-[0.14em];
 }
 
 .viewToggleButton {
-  @apply rounded-full px-3 py-1;
+  @apply rounded-md px-2.5 py-1 text-[10px];
 }
 
 .refreshButton {
-  @apply w-full rounded-full border border-border px-4 py-2 text-xs uppercase tracking-[0.2em];
+  @apply inline-flex h-10 w-10 items-center justify-center rounded-lg border border-[#1d2f4c] bg-[#071021] text-slate-200;
 }
 
 .latestMeta {
-  @apply mt-2 text-sm text-muted;
+  @apply text-[11px] uppercase tracking-[0.14em] text-slate-500;
 }
 
 .cardGrid {
@@ -59,40 +120,94 @@
 }
 
 .card {
-  @apply relative rounded-2xl border border-border bg-base/40 p-4;
+  @apply relative overflow-hidden rounded-xl border p-4;
+  border-color: rgb(27 47 77);
+  background-color: rgb(6 15 31 / 0.88);
   transition:
-    transform 260ms ease-in-out,
-    box-shadow 260ms ease-in-out,
-    border-color 260ms ease-in-out,
-    background-color 260ms ease-in-out,
-    opacity 260ms ease-in-out,
-    filter 260ms ease-in-out;
+    transform 220ms ease-in-out,
+    box-shadow 220ms ease-in-out,
+    border-color 220ms ease-in-out,
+    background-color 220ms ease-in-out,
+    opacity 220ms ease-in-out,
+    filter 220ms ease-in-out;
+}
+
+.card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  border-radius: 0.75rem 0.4rem 0.4rem 0.75rem;
+  background: rgb(var(--card-severity-rgb, 0 0 0) / 0.98);
+  pointer-events: none;
+}
+
+.card:hover {
+  border-color: rgb(38 83 132 / 0.85);
 }
 
 .cardSeverityLabel {
-  @apply pl-7;
+  @apply inline-flex items-center gap-2;
+}
+
+.severityDot {
+  @apply h-2 w-2 rounded-full;
 }
 
 .cardSeverityCritical {
-  @apply border-l-4 border-l-red-500;
+  --card-severity-rgb: 244 63 94;
+  border-color: rgb(244 63 94 / 0.56);
+}
+
+.cardSeverityCritical::before {
+  background: rgb(244 63 94 / 0.98);
+}
+
+.cardSeverityCritical .severityDot {
+  background-color: rgb(244 63 94);
 }
 
 .cardSeverityWarning {
-  @apply border-l-4 border-l-yellow-400;
+  --card-severity-rgb: 245 158 11;
+  border-color: rgb(245 158 11 / 0.56);
+}
+
+.cardSeverityWarning::before {
+  background: rgb(245 158 11 / 0.98);
+}
+
+.cardSeverityWarning .severityDot {
+  background-color: rgb(245 158 11);
 }
 
 .cardSeverityInfo {
-  @apply border-l-4 border-l-slate-400;
+  --card-severity-rgb: 100 116 139;
+  border-color: rgb(71 85 105 / 0.58);
+}
+
+.cardSeverityInfo::before {
+  background: rgb(100 116 139 / 0.96);
+}
+
+.cardSeverityInfo .severityDot {
+  background-color: rgb(100 116 139);
+}
+
+.cardSelected {
+  box-shadow: 0 0 0 1px rgb(103 232 249 / 0.42);
 }
 
 .cardExpanded {
-  @apply shadow-card;
-  transform: translateY(-2px) scale(1.01);
+  border-color: rgb(56 189 248 / 0.72);
+  box-shadow: 0 22px 36px -28px rgba(0, 0, 0, 0.96);
+  transform: translateY(-2px) scale(1.005);
   z-index: 20;
 }
 
 .cardMuted {
-  opacity: 0.65;
+  opacity: 0.6;
   filter: blur(1px);
 }
 
@@ -104,10 +219,10 @@
   overflow: hidden;
   pointer-events: none;
   transition:
-    max-height 320ms ease-in-out,
-    opacity 320ms ease-in-out,
-    transform 320ms ease-in-out,
-    margin-top 320ms ease-in-out;
+    max-height 300ms ease-in-out,
+    opacity 300ms ease-in-out,
+    transform 300ms ease-in-out,
+    margin-top 300ms ease-in-out;
 }
 
 .cardDetailOpen {
@@ -119,7 +234,7 @@
 }
 
 .cardNotePreview {
-  @apply mt-3 rounded-xl border border-border bg-base/60 px-3 py-2 text-xs text-muted;
+  @apply mt-2.5 rounded-lg border border-[#1a2d4a] bg-[#060e1c] px-3 py-2 text-[11px] text-slate-400;
   display: -webkit-box;
   overflow: hidden;
   -webkit-line-clamp: 2;
@@ -129,12 +244,12 @@
 .focusOverlay {
   position: fixed;
   inset: 0;
-  background-color: rgb(var(--base) / 0.3);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  background-color: rgb(4 8 18 / 0.55);
+  backdrop-filter: blur(7px);
+  -webkit-backdrop-filter: blur(7px);
   opacity: 0;
   pointer-events: none;
-  transition: opacity 260ms ease-in-out;
+  transition: opacity 220ms ease-in-out;
   z-index: 10;
 }
 
@@ -144,11 +259,11 @@
 }
 
 .tableRowActive {
-  @apply bg-base/60;
+  @apply bg-[#081124];
 }
 
 .tableDetailRow {
-  @apply bg-base/40;
+  @apply bg-[#060f1f];
 }
 
 .tableDetailCell {
@@ -166,79 +281,170 @@
   overflow: hidden;
   pointer-events: none;
   transition:
-    max-height 320ms ease-in-out,
-    opacity 320ms ease-in-out,
-    transform 320ms ease-in-out;
+    max-height 300ms ease-in-out,
+    opacity 300ms ease-in-out,
+    transform 300ms ease-in-out;
 }
 
 .tableDetailOpen {
-  max-height: 420px;
+  max-height: 430px;
   opacity: 1;
   transform: translateY(0);
   pointer-events: auto;
 }
 
-@media (max-width: 640px) {
-  .cardDetailOpen {
-    max-height: 720px;
+:global(:root:not(.dark)) .dashboardHeader {
+  border-color: #c3d4e7;
+}
+
+:global(:root:not(.dark)) .dashboardOverline {
+  color: #60748e;
+}
+
+:global(:root:not(.dark)) .dashboardTitle {
+  color: #13233a;
+}
+
+:global(:root:not(.dark)) .greetingPill {
+  border-color: #bfd2e6;
+  background: #f4f9ff;
+}
+
+:global(:root:not(.dark)) .kpiCard {
+  border-color: #c3d4e8;
+  background-color: #ffffff;
+  box-shadow: 0 10px 30px -26px rgba(8, 30, 64, 0.3);
+}
+
+:global(:root:not(.dark)) .kpiLabel {
+  color: #60748e;
+}
+
+:global(:root:not(.dark)) .kpiIcon {
+  border-color: #c3d4e8;
+  background: #edf5ff;
+}
+
+:global(:root:not(.dark)) .kpiValue {
+  color: #13233a;
+}
+
+:global(:root:not(.dark)) .kpiMeta {
+  color: #2a7086;
+}
+
+:global(:root:not(.dark)) .toolbarShell {
+  border-color: #c3d4e8;
+  background-color: #ffffff;
+}
+
+:global(:root:not(.dark)) .searchIcon {
+  color: #6c8098;
+}
+
+:global(:root:not(.dark)) .searchInput {
+  border-color: #c3d4e8;
+  background: #f5f9ff;
+  color: #13233a;
+}
+
+:global(:root:not(.dark)) .filterSelect {
+  border-color: #c3d4e8;
+  background: #f5f9ff;
+  color: #27425f;
+}
+
+:global(:root:not(.dark)) .viewToggle {
+  border-color: #c3d4e8;
+  background: #f5f9ff;
+}
+
+:global(:root:not(.dark)) .refreshButton {
+  border-color: #c3d4e8;
+  background: #f5f9ff;
+  color: #27425f;
+}
+
+:global(:root:not(.dark)) .latestMeta {
+  color: #667f9d;
+}
+
+:global(:root:not(.dark)) .card {
+  border-color: #c3d4e8;
+  background-color: #ffffff;
+}
+
+:global(:root:not(.dark)) .card:hover {
+  border-color: #8db2d3;
+}
+
+:global(:root:not(.dark)) .cardNotePreview {
+  border-color: #c8d8ea;
+  background: #f5f9ff;
+  color: #59708b;
+}
+
+:global(:root:not(.dark)) .focusOverlay {
+  background-color: rgb(236 244 250 / 0.7);
+}
+
+:global(:root:not(.dark)) .tableRowActive {
+  background: #eef6ff;
+}
+
+:global(:root:not(.dark)) .tableDetailRow {
+  background: #f8fbff;
+}
+
+@media (max-width: 639px) {
+  .dashboardTitle {
+    @apply text-[1.75rem];
   }
 
-  .tableDetailOpen {
-    max-height: 640px;
+  .kpiValue {
+    @apply text-3xl;
+  }
+
+  .cardDetailOpen {
+    max-height: 760px;
   }
 }
 
 @media (min-width: 640px) {
-  .filterSelect {
-    @apply w-auto;
-  }
-
   .searchWrap {
-    @apply max-w-lg;
+    @apply max-w-[24rem];
   }
 
-  .latestHeader {
-    @apply p-4;
-  }
-
-  .viewToggle {
-    @apply w-auto justify-start;
-  }
-
-  .refreshButton {
+  .latestFilters {
     @apply w-auto;
-  }
-
-  .cardGrid {
-    @apply gap-6;
-  }
-
-  .card {
-    @apply p-5;
-  }
-
-  .tableDetailCell {
-    @apply px-4 pb-4;
   }
 }
 
 @media (min-width: 768px) {
+  .kpiGrid {
+    @apply grid-cols-2;
+  }
+
   .cardGrid {
     @apply grid-cols-2;
   }
 }
 
 @media (min-width: 1024px) {
-  .searchWrap {
-    @apply w-[480px] max-w-none;
+  .kpiGrid {
+    @apply grid-cols-4;
   }
 
-  .latestHeader {
-    @apply grid-cols-[minmax(220px,1fr)_minmax(360px,1.4fr)_auto] items-center;
+  .toolbarShell {
+    @apply flex-nowrap;
+  }
+
+  .searchWrap {
+    @apply w-[320px] max-w-none;
   }
 
   .latestMiddle {
-    @apply flex-nowrap justify-center;
+    @apply flex-1 flex-nowrap;
   }
 
   .latestFilters {
@@ -246,13 +452,7 @@
   }
 
   .latestActions {
-    @apply flex-nowrap justify-end;
-  }
-}
-
-@media (min-width: 1280px) {
-  .searchWrap {
-    @apply w-[560px];
+    @apply ml-auto w-auto flex-nowrap justify-end;
   }
 
   .cardGrid {

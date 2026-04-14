@@ -2,6 +2,37 @@ import type { AppearanceSettings, ThemePalette } from "./types";
 
 export const defaultAppearance: AppearanceSettings = {
   light: {
+    base: "#ECF4FA",
+    surface: "#FFFFFF",
+    text: "#0D1827",
+    muted: "#5E718B",
+    accent: "#0ECBB7",
+    accentSoft: "#C9F7F2",
+    border: "#CFDBEA"
+  },
+  dark: {
+    base: "#060C18",
+    surface: "#060F1F",
+    text: "#E8EFFB",
+    muted: "#64748B",
+    accent: "#14D4BF",
+    accentSoft: "#0D3136",
+    border: "#1B2F4D"
+  },
+  branding: {
+    logoUrl: "",
+    faviconUrl: ""
+  },
+  background: {
+    gradient: 88,
+    glow: 34,
+    noise: 20,
+    radius: 24
+  }
+};
+
+const legacyDefaultAppearance: AppearanceSettings = {
+  light: {
     base: "#F6F4F0",
     surface: "#FFFFFF",
     text: "#14181E",
@@ -26,32 +57,92 @@ export const defaultAppearance: AppearanceSettings = {
   background: {
     gradient: 100,
     glow: 0,
-    noise: 100
+    noise: 100,
+    radius: 24
   }
 };
+
+function normalizeHexString(value: string | undefined | null) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function isLegacyDefaultAppearance(input: Partial<AppearanceSettings> | null | undefined) {
+  if (!input) {
+    return false;
+  }
+  const safe = input as AppearanceSettings;
+  const colorsMatch =
+    normalizeHexString(safe.light?.base) === normalizeHexString(legacyDefaultAppearance.light.base) &&
+    normalizeHexString(safe.light?.surface) === normalizeHexString(legacyDefaultAppearance.light.surface) &&
+    normalizeHexString(safe.light?.text) === normalizeHexString(legacyDefaultAppearance.light.text) &&
+    normalizeHexString(safe.light?.muted) === normalizeHexString(legacyDefaultAppearance.light.muted) &&
+    normalizeHexString(safe.light?.accent) === normalizeHexString(legacyDefaultAppearance.light.accent) &&
+    normalizeHexString(safe.light?.accentSoft) ===
+      normalizeHexString(legacyDefaultAppearance.light.accentSoft) &&
+    normalizeHexString(safe.light?.border) === normalizeHexString(legacyDefaultAppearance.light.border) &&
+    normalizeHexString(safe.dark?.base) === normalizeHexString(legacyDefaultAppearance.dark.base) &&
+    normalizeHexString(safe.dark?.surface) === normalizeHexString(legacyDefaultAppearance.dark.surface) &&
+    normalizeHexString(safe.dark?.text) === normalizeHexString(legacyDefaultAppearance.dark.text) &&
+    normalizeHexString(safe.dark?.muted) === normalizeHexString(legacyDefaultAppearance.dark.muted) &&
+    normalizeHexString(safe.dark?.accent) === normalizeHexString(legacyDefaultAppearance.dark.accent) &&
+    normalizeHexString(safe.dark?.accentSoft) ===
+      normalizeHexString(legacyDefaultAppearance.dark.accentSoft) &&
+    normalizeHexString(safe.dark?.border) === normalizeHexString(legacyDefaultAppearance.dark.border);
+  if (!colorsMatch) {
+    return false;
+  }
+  const bg = safe.background ?? legacyDefaultAppearance.background;
+  return (
+    Number(bg.gradient) === legacyDefaultAppearance.background.gradient &&
+    Number(bg.glow) === legacyDefaultAppearance.background.glow &&
+    Number(bg.noise) === legacyDefaultAppearance.background.noise &&
+    Number(bg.radius ?? legacyDefaultAppearance.background.radius) === legacyDefaultAppearance.background.radius
+  );
+}
 
 export function normalizeAppearanceSettings(
   input: Partial<AppearanceSettings> | null | undefined
 ): AppearanceSettings {
+  if (isLegacyDefaultAppearance(input)) {
+    return defaultAppearance;
+  }
   const safe = input ?? {};
+  const lightAccent = normalizeHex(
+    safe.light?.accent ?? safe.dark?.accent ?? defaultAppearance.light.accent,
+    defaultAppearance.light.accent
+  );
+  const darkAccent = normalizeHex(
+    safe.dark?.accent ?? safe.light?.accent ?? defaultAppearance.dark.accent,
+    defaultAppearance.dark.accent
+  );
+  const lightAccentSoft = normalizeHex(
+    safe.light?.accentSoft ?? defaultAppearance.light.accentSoft,
+    defaultAppearance.light.accentSoft
+  );
+  const darkAccentSoft = normalizeHex(
+    safe.dark?.accentSoft ?? defaultAppearance.dark.accentSoft,
+    defaultAppearance.dark.accentSoft
+  );
   return {
     light: {
-      base: safe.light?.base ?? defaultAppearance.light.base,
-      surface: safe.light?.surface ?? defaultAppearance.light.surface,
-      text: safe.light?.text ?? defaultAppearance.light.text,
-      muted: safe.light?.muted ?? defaultAppearance.light.muted,
-      accent: safe.light?.accent ?? defaultAppearance.light.accent,
-      accentSoft: safe.light?.accentSoft ?? defaultAppearance.light.accentSoft,
-      border: safe.light?.border ?? defaultAppearance.light.border
+      // Only accent is user-editable; keep the base light palette stable across the app.
+      base: defaultAppearance.light.base,
+      surface: defaultAppearance.light.surface,
+      text: defaultAppearance.light.text,
+      muted: defaultAppearance.light.muted,
+      accent: lightAccent,
+      accentSoft: lightAccentSoft,
+      border: defaultAppearance.light.border
     },
     dark: {
-      base: safe.dark?.base ?? defaultAppearance.dark.base,
-      surface: safe.dark?.surface ?? defaultAppearance.dark.surface,
-      text: safe.dark?.text ?? defaultAppearance.dark.text,
-      muted: safe.dark?.muted ?? defaultAppearance.dark.muted,
-      accent: safe.dark?.accent ?? defaultAppearance.dark.accent,
-      accentSoft: safe.dark?.accentSoft ?? defaultAppearance.dark.accentSoft,
-      border: safe.dark?.border ?? defaultAppearance.dark.border
+      // Only accent is user-editable; keep the base dark palette stable across the app.
+      base: defaultAppearance.dark.base,
+      surface: defaultAppearance.dark.surface,
+      text: defaultAppearance.dark.text,
+      muted: defaultAppearance.dark.muted,
+      accent: darkAccent,
+      accentSoft: darkAccentSoft,
+      border: defaultAppearance.dark.border
     },
     branding: {
       logoUrl: safe.branding?.logoUrl ?? defaultAppearance.branding.logoUrl,
@@ -60,7 +151,8 @@ export function normalizeAppearanceSettings(
     background: {
       gradient: safe.background?.gradient ?? defaultAppearance.background.gradient,
       glow: safe.background?.glow ?? defaultAppearance.background.glow,
-      noise: safe.background?.noise ?? defaultAppearance.background.noise
+      noise: safe.background?.noise ?? defaultAppearance.background.noise,
+      radius: safe.background?.radius ?? defaultAppearance.background.radius
     }
   };
 }
@@ -144,13 +236,21 @@ export function applyAppearanceToDocument(appearance: AppearanceSettings) {
   const darkCss = paletteToCss(normalized.dark, fallback.dark);
   const gradient = clampPercent(normalized.background.gradient, fallback.background.gradient) / 100;
   const glow = clampPercent(normalized.background.glow, fallback.background.glow) / 100;
-  const noise = clampPercent(normalized.background.noise, fallback.background.noise) / 100;
+  const noise = 0;
+  const radius = clampPercent(normalized.background.radius, fallback.background.radius);
+  const glassEnabled = false;
   const logoUrl = normalized.branding.logoUrl.trim();
   const brandLogo = logoUrl ? `url("${escapeCssUrl(logoUrl)}")` : "none";
   const extras = [
     `--bg-gradient: ${gradient.toFixed(2)};`,
     `--bg-glow: ${glow.toFixed(2)};`,
     `--bg-noise: ${noise.toFixed(2)};`,
+    `--ui-radius: ${Math.round(8 + radius * 0.44)}px;`,
+    `--glass-blur: ${glassEnabled ? "10px" : "0px"};`,
+    `--glass-shell-alpha: ${glassEnabled ? "0.94" : "0.92"};`,
+    `--glass-panel-alpha: ${glassEnabled ? "0.9" : "0.95"};`,
+    `--glass-field-alpha: ${glassEnabled ? "0.86" : "0.96"};`,
+    `--glass-border-alpha: ${glassEnabled ? "0.9" : "0.88"};`,
     `--brand-logo-url: ${brandLogo};`
   ].join("\n");
   const styleId = "pulze-appearance-theme";
@@ -163,5 +263,6 @@ export function applyAppearanceToDocument(appearance: AppearanceSettings) {
   }
   style.textContent = css;
   document.documentElement.dataset.brandLogo = logoUrl ? "true" : "false";
+  document.documentElement.dataset.glass = "false";
   setFavicon(normalized.branding.faviconUrl);
 }

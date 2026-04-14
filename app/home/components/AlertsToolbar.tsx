@@ -38,12 +38,7 @@ export default function AlertsToolbar({
   activeCount
 }: AlertsToolbarProps) {
   return (
-    <div className={styles.latestHeader}>
-      <div className={styles.latestTitle}>
-        <p className="text-xs uppercase tracking-[0.3em] text-muted">Alerts</p>
-        <h3 className="text-xl font-semibold">Current Alerts</h3>
-        <p className={styles.latestMeta}>Active alerts: {activeCount}</p>
-      </div>
+    <div className={styles.toolbarShell}>
       <div className={styles.latestMiddle}>
         <div className={styles.searchWrap}>
           <span className={styles.searchIcon}>
@@ -61,7 +56,7 @@ export default function AlertsToolbar({
             value={searchTerm}
             onChange={(event) => onSearchTermChange(event.target.value)}
             ref={searchInputRef}
-            placeholder="(/ to search, Esc to clear)"
+            placeholder="Search alerts (id, title, source...)"
             aria-label="Search alerts"
             className={styles.searchInput}
           />
@@ -70,7 +65,10 @@ export default function AlertsToolbar({
           <FilterSelect
             value={filterSource}
             onChange={(value) => onFilterSourceChange(value as SourceOption)}
-            options={sourceFilterOptions}
+            options={sourceFilterOptions.map((option) => ({
+              value: option.value,
+              label: `Source: ${option.label.toUpperCase()}`
+            }))}
             ariaLabel="Source filter"
             className={styles.filterSelect}
             optionClassName="text-sm"
@@ -78,7 +76,10 @@ export default function AlertsToolbar({
           <FilterSelect
             value={filterSeverity}
             onChange={(value) => onFilterSeverityChange(value as SeverityOption)}
-            options={severityFilterOptions}
+            options={severityFilterOptions.map((option) => ({
+              value: option.value,
+              label: `Severity: ${option.label.toUpperCase()}`
+            }))}
             ariaLabel="Severity filter"
             className={styles.filterSelect}
             optionClassName="text-sm"
@@ -118,9 +119,18 @@ export default function AlertsToolbar({
             Split
           </button>
         </div>
-        <button type="button" onClick={onRefresh} className={styles.refreshButton}>
-          {isLoadingAlerts ? "Refreshing" : "Refresh"}
+        <button type="button" onClick={onRefresh} className={styles.refreshButton} title="Refresh alerts">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className={isLoadingAlerts ? "animate-spin" : ""}>
+            <path
+              d="M20 12a8 8 0 1 1-2.35-5.65M20 4v5h-5"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
         </button>
+        <span className={styles.latestMeta}>Active: {activeCount}</span>
       </div>
     </div>
   );

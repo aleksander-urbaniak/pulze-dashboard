@@ -2,8 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import Sidebar from "../../components/Sidebar";
-import { defaultAppearance } from "../../lib/appearance";
+import { useAppSession } from "../../lib/app-session";
 import type { Alert, Settings, User } from "../../lib/types";
 import {
   filterCookieKey,
@@ -17,14 +16,7 @@ import {
   type ViewMode
 } from "./constants";
 import { exportAlertsToCsv, formatRelativeTime, readCookieValue, writeCookieValue } from "./utils";
-import type {
-  AlertResponse,
-  ApiError,
-  BootstrapResponse,
-  SettingsResponse,
-  UserResponse
-} from "./types";
-import AuthScreen from "./components/AuthScreen";
+import type { AlertResponse, ApiError } from "./types";
 import DashboardHeader from "./components/DashboardHeader";
 import AlertsToolbar from "./components/AlertsToolbar";
 import AlertsBulkActions from "./components/AlertsBulkActions";
@@ -32,16 +24,18 @@ import AlertsCardsView from "./components/AlertsCardsView";
 import AlertsTableView from "./components/AlertsTableView";
 import AlertsSplitView from "./components/AlertsSplitView";
 
-const emptySettings: Settings = {
-  prometheusSources: [],
-  zabbixSources: [],
-  kumaSources: [],
-  refreshInterval: 30,
-  appearance: defaultAppearance
+const disappearedEventsStoragePrefix = "pulze.disappearedEvents";
+
+type DisappearedAlertEvent = {
+  id: string;
+  source: string;
+  startedAt: string;
+  disappearedAt: string;
+  durationMinutes: number;
 };
 
 export default function HomePage() {
-  const [user, setUser] = useState<User | null>(null);
+  const { user, settings } = useAppSession();
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [errors, setErrors] = useState<ApiError[]>([]);
   const [sourceHealth, setSourceHealth] = useState<AlertResponse["health"] | null>(null);
@@ -50,23 +44,6 @@ export default function HomePage() {
   const [filterSource, setFilterSource] = useState<SourceOption>("All");
   const [filterSeverity, setFilterSeverity] = useState<SeverityOption>("All");
   const [viewMode, setViewMode] = useState<ViewMode>("cards");
-  const [settings, setSettings] = useState<Settings>(emptySettings);
-  const [loginForm, setLoginForm] = useState({ username: "", password: "" });
-  const [loginTotpCode, setLoginTotpCode] = useState("");
-  const [loginChallengeToken, setLoginChallengeToken] = useState<string | null>(null);
-  const [loginError, setLoginError] = useState<string | null>(null);
-  const [ssoProviders, setSsoProviders] = useState<{ saml: boolean }>({ saml: false });
-  const [setupForm, setSetupForm] = useState({
-    firstName: "",
-    lastName: "",
-    username: "",
-    email: "",
-    avatarUrl: "",
-    password: ""
-  });
-  const [setupError, setSetupError] = useState<string | null>(null);
-  const [needsSetup, setNeedsSetup] = useState(false);
-  const [isCheckingSetup, setIsCheckingSetup] = useState(true);
   const [newAlertCount, setNewAlertCount] = useState(0);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [notifications, setNotifications] = useState<Alert[]>([]);
@@ -74,16 +51,19 @@ export default function HomePage() {
   const [expandedAlertId, setExpandedAlertId] = useState<string | null>(null);
   const [selectedAlertIds, setSelectedAlertIds] = useState<Set<string>>(new Set());
   const [alertNoteDraft, setAlertNoteDraft] = useState("");
+  const [disappearedEvents, setDisappearedEvents] = useState<DisappearedAlertEvent[]>([]);
+  const [
+    disappearedEventsHydratedKey,
+    setDisappearedEventsHydratedKey
+  ] = useState<string | null>(null);
   const lastAlertIdsRef = useRef<Set<string> | null>(null);
+  const lastAlertsByKeyRef = useRef<Map<string, Alert>>(new Map());
   const notificationsRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const listItemRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
   const sourceFilterOptions = sourceOptions.map((option) => ({ value: option, label: option }));
   const severityFilterOptions = severityOptions.map((option) => ({ value: option, label: option }));
-
-  useEffect(() => {
-    void loadSession();
-  }, []);
+  const disappearedEventsStorageKey = `${disappearedEventsStoragePrefix}.${user?.id ?? "guest"}`;
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -122,6 +102,49 @@ export default function HomePage() {
     }
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined" || !user) {
+      return;
+    }
+    try {
+      const raw = window.localStorage.getItem(disappearedEventsStorageKey);
+      if (!raw) {
+        return;
+      }
+      const parsed = JSON.parse(raw) as DisappearedAlertEvent[];
+      if (!Array.isArray(parsed)) {
+        return;
+      }
+      const now = Date.now();
+      const maxAgeMs = 14 * 24 * 60 * 60 * 1000;
+      const normalized = parsed
+        .filter((event) => {
+          const disappearedAt = Date.parse(event.disappearedAt);
+          return Number.isFinite(disappearedAt) && now - disappearedAt <= maxAgeMs;
+        })
+        .slice(0, 500);
+      setDisappearedEvents(normalized);
+    } catch {
+      window.localStorage.removeItem(disappearedEventsStorageKey);
+    } finally {
+      setDisappearedEventsHydratedKey(disappearedEventsStorageKey);
+    }
+  }, [disappearedEventsStorageKey, user]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !user) {
+      return;
+    }
+    if (disappearedEventsHydratedKey !== disappearedEventsStorageKey) {
+      return;
+    }
+    try {
+      window.localStorage.setItem(disappearedEventsStorageKey, JSON.stringify(disappearedEvents));
+    } catch {
+      // ignore storage issues
+    }
+  }, [disappearedEvents, disappearedEventsHydratedKey, disappearedEventsStorageKey, user]);
+
   function persistFilters(next?: {
     source?: SourceOption;
     severity?: SeverityOption;
@@ -144,6 +167,7 @@ export default function HomePage() {
   }
 
   function getAlertSourceUrl(alert: Alert) {
+    if (!settings) return null;
     const label = alert.sourceLabel?.trim() ?? "";
     if (alert.source === "Prometheus") {
       const match = settings.prometheusSources.find((source) =>
@@ -263,15 +287,61 @@ export default function HomePage() {
     });
   }, [selectedAlertId, viewMode]);
 
+  async function loadAlerts() {
+    setIsLoadingAlerts(true);
+    const response = await fetch("/api/alerts");
+    if (!response.ok) {
+      setIsLoadingAlerts(false);
+      return;
+    }
+    const data = (await response.json()) as AlertResponse;
+    setAlerts(data.alerts);
+    setErrors(data.errors ?? []);
+    setSourceHealth(data.health ?? null);
+    const alertKey = (alert: Alert) => alert.groupKey ?? alert.id;
+    const currentMap = new Map<string, Alert>(data.alerts.map((alert) => [alertKey(alert), alert]));
+    const currentIds = new Set(currentMap.keys());
+    if (lastAlertIdsRef.current) {
+      const newAlerts = data.alerts.filter(
+        (alert) => !lastAlertIdsRef.current?.has(alertKey(alert))
+      );
+      if (newAlerts.length > 0) {
+        setNewAlertCount((count) => count + newAlerts.length);
+        setNotifications((prev) => [...newAlerts, ...prev].slice(0, 20));
+      }
+
+      const disappearedEventsBatch = Array.from(lastAlertsByKeyRef.current.entries())
+        .filter(([key]) => !currentMap.has(key))
+        .map(([key, previousAlert]) => {
+          const disappearedAt = new Date().toISOString();
+          const durationMs = Date.parse(disappearedAt) - Date.parse(previousAlert.timestamp);
+          const durationMinutes =
+            Number.isFinite(durationMs) && durationMs > 0 ? Math.round(durationMs / 60000) : 0;
+          return {
+            id: key,
+            source: previousAlert.sourceLabel?.trim() || previousAlert.source || "Unknown",
+            startedAt: previousAlert.timestamp,
+            disappearedAt,
+            durationMinutes
+          } as DisappearedAlertEvent;
+        });
+      if (disappearedEventsBatch.length > 0) {
+        setDisappearedEvents((prev) => [...disappearedEventsBatch, ...prev].slice(0, 500));
+      }
+    }
+    lastAlertIdsRef.current = currentIds;
+    lastAlertsByKeyRef.current = currentMap;
+    setIsLoadingAlerts(false);
+  }
+
   useEffect(() => {
     if (user) {
-      void loadSettings();
       void loadAlerts();
     }
   }, [user]);
 
   useEffect(() => {
-    if (!user || !settings.refreshInterval) {
+    if (!user || !settings?.refreshInterval) {
       return;
     }
     const interval = Math.max(5, settings.refreshInterval) * 1000;
@@ -279,7 +349,7 @@ export default function HomePage() {
       void loadAlerts();
     }, interval);
     return () => clearInterval(timer);
-  }, [user, settings.refreshInterval]);
+  }, [user, settings?.refreshInterval]);
 
   const filteredAlerts = useMemo(() => {
     return alerts.filter((alert) => {
@@ -292,6 +362,21 @@ export default function HomePage() {
       return matchSearch && matchSource && matchSeverity;
     });
   }, [alerts, searchTerm, filterSource, filterSeverity]);
+
+  const unresolvedAlerts = useMemo(
+    () => alerts.filter((alert) => (alert.ackStatus ?? "active") !== "resolved"),
+    [alerts]
+  );
+
+  const criticalCount = useMemo(
+    () => unresolvedAlerts.filter((alert) => alert.severity === "critical").length,
+    [unresolvedAlerts]
+  );
+
+  const warningCount = useMemo(
+    () => unresolvedAlerts.filter((alert) => alert.severity === "warning").length,
+    [unresolvedAlerts]
+  );
 
   useEffect(() => {
     setSelectedAlertIds((prev) => {
@@ -331,80 +416,6 @@ export default function HomePage() {
     setAlertNoteDraft(current?.ackNote ?? "");
   }, [filteredAlerts, selectedAlertId]);
 
-  async function checkSetup() {
-    const response = await fetch("/api/auth/bootstrap");
-    if (!response.ok) {
-      setNeedsSetup(false);
-      return;
-    }
-    const data = (await response.json()) as BootstrapResponse;
-    setNeedsSetup(Boolean(data.needsSetup));
-  }
-
-  async function loadSession() {
-    const response = await fetch("/api/auth/me");
-    if (!response.ok) {
-      setUser(null);
-      lastAlertIdsRef.current = null;
-      setNewAlertCount(0);
-      setNotifications([]);
-      setIsNotificationsOpen(false);
-      await checkSetup();
-      await loadSsoProviders();
-      setIsCheckingSetup(false);
-      return;
-    }
-    const data = (await response.json()) as UserResponse;
-    setUser(data.user);
-    setIsCheckingSetup(false);
-  }
-
-  async function loadSsoProviders() {
-    const response = await fetch("/api/auth/sso/providers");
-    if (!response.ok) {
-      setSsoProviders({ saml: false });
-      return;
-    }
-    const data = (await response.json()) as { saml?: boolean };
-    setSsoProviders({
-      saml: Boolean(data.saml)
-    });
-  }
-
-  async function loadSettings() {
-    const response = await fetch("/api/settings");
-    if (!response.ok) {
-      return;
-    }
-    const data = (await response.json()) as SettingsResponse;
-    setSettings(data.settings);
-  }
-
-  async function loadAlerts() {
-    setIsLoadingAlerts(true);
-    const response = await fetch("/api/alerts");
-    if (!response.ok) {
-      setIsLoadingAlerts(false);
-      return;
-    }
-    const data = (await response.json()) as AlertResponse;
-    setAlerts(data.alerts);
-    setErrors(data.errors ?? []);
-    setSourceHealth(data.health ?? null);
-    const currentIds = new Set(data.alerts.map((alert) => alert.groupKey ?? alert.id));
-    if (lastAlertIdsRef.current) {
-      const newAlerts = data.alerts.filter(
-        (alert) => !lastAlertIdsRef.current?.has(alert.groupKey ?? alert.id)
-      );
-      if (newAlerts.length > 0) {
-        setNewAlertCount((count) => count + newAlerts.length);
-        setNotifications((prev) => [...newAlerts, ...prev].slice(0, 20));
-      }
-    }
-    lastAlertIdsRef.current = currentIds;
-    setIsLoadingAlerts(false);
-  }
-
   async function updateAlertState(alertId: string, status: "active" | "acknowledged" | "resolved") {
     if (!user?.permissions?.includes("alerts.ack")) {
       return;
@@ -422,96 +433,8 @@ export default function HomePage() {
     await loadAlerts();
   }
 
-  async function handleLogin(event: React.FormEvent) {
-    event.preventDefault();
-    setLoginError(null);
-    const payload = loginChallengeToken
-      ? {
-          challengeToken: loginChallengeToken,
-          totpCode: loginTotpCode
-        }
-      : loginForm;
-    const response = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      setLoginError(data.error ?? "Login failed");
-      return;
-    }
-    if (data.requiresTwoFactor && data.challengeToken) {
-      setLoginChallengeToken(data.challengeToken);
-      setLoginTotpCode("");
-      setLoginError(null);
-      return;
-    }
-    setUser((data as UserResponse).user);
-    setNeedsSetup(false);
-    setLoginForm({ username: "", password: "" });
-    setLoginChallengeToken(null);
-    setLoginTotpCode("");
-  }
-
-  async function handleSetup(event: React.FormEvent) {
-    event.preventDefault();
-    setSetupError(null);
-    const response = await fetch("/api/auth/bootstrap", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(setupForm)
-    });
-    if (!response.ok) {
-      const data = await response.json();
-      setSetupError(data.error ?? "Setup failed");
-      return;
-    }
-    const data = (await response.json()) as UserResponse;
-    setUser(data.user);
-    setNeedsSetup(false);
-  }
-
-  async function handleLogout() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    setUser(null);
-    setNeedsSetup(false);
-    setIsCheckingSetup(true);
-    lastAlertIdsRef.current = null;
-    setNewAlertCount(0);
-    setNotifications([]);
-    setIsNotificationsOpen(false);
-    setLoginChallengeToken(null);
-    setLoginTotpCode("");
-    await checkSetup();
-    await loadSsoProviders();
-    setIsCheckingSetup(false);
-  }
-
-  if (!user) {
-    return (
-      <AuthScreen
-        needsSetup={needsSetup}
-        isCheckingSetup={isCheckingSetup}
-        loginForm={loginForm}
-        setLoginForm={setLoginForm}
-        loginTotpCode={loginTotpCode}
-        setLoginTotpCode={setLoginTotpCode}
-        isTwoFactorStep={Boolean(loginChallengeToken)}
-        onCancelTwoFactor={() => {
-          setLoginChallengeToken(null);
-          setLoginTotpCode("");
-          setLoginError(null);
-        }}
-        setupForm={setupForm}
-        setSetupForm={setSetupForm}
-        loginError={loginError}
-        setupError={setupError}
-        ssoProviders={ssoProviders}
-        onLoginSubmit={handleLogin}
-        onSetupSubmit={handleSetup}
-      />
-    );
+  if (!user || !settings) {
+    return null;
   }
 
   const selectedAlert = filteredAlerts.find((alert) => alert.id === selectedAlertId) ?? null;
@@ -553,118 +476,117 @@ export default function HomePage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row">
-      <Sidebar user={user} onLogout={handleLogout} />
-      <div className="flex-1 min-w-0">
-        <main className="mx-auto w-full max-w-6xl px-5 py-6 sm:px-6 sm:py-8">
-          <DashboardHeader
-            user={user}
-            notifications={notifications}
-            newAlertCount={newAlertCount}
-            isNotificationsOpen={isNotificationsOpen}
-            notificationsRef={notificationsRef}
-            onToggleNotifications={handleToggleNotifications}
-            onClearNotifications={handleClearNotifications}
-            getAlertSourceUrl={getAlertSourceUrl}
-          />
+    <main className="w-full min-h-screen border-l border-[rgb(var(--app-divider)/0.82)] bg-[rgb(var(--app-main-bg))] px-4 pb-6 pt-2 sm:px-6 lg:px-6">
+      <div className="mx-auto w-full max-w-[1520px]">
+        <DashboardHeader
+          user={user}
+          alerts={alerts}
+          disappearedEvents={disappearedEvents}
+          notifications={notifications}
+          newAlertCount={newAlertCount}
+          isNotificationsOpen={isNotificationsOpen}
+          notificationsRef={notificationsRef}
+          onToggleNotifications={handleToggleNotifications}
+          onClearNotifications={handleClearNotifications}
+          getAlertSourceUrl={getAlertSourceUrl}
+        />
 
-          {staleSources.length > 0 ? (
-            <div className="mt-4 rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-600 dark:text-amber-400">
-              <p className="text-xs uppercase tracking-[0.2em] text-amber-600 dark:text-amber-400">
-                Stale sources
-              </p>
-              <p className="mt-2 text-sm text-amber-600 dark:text-amber-400">
-                {staleSources
-                  .map((source) => {
-                    const label = source.sourceLabel
-                      ? `${source.sourceType} (${source.sourceLabel})`
-                      : source.sourceType;
-                    const lastSuccess = formatRelativeTime(source.lastSuccessAt ?? null);
-                    const retry =
-                      source.nextRetryAt ? `, retry ${formatRelativeTime(source.nextRetryAt)}` : "";
-                    return `${label} last success ${lastSuccess}${retry}`;
-                  })
-                  .join(" | ")}
-              </p>
-            </div>
-          ) : null}
+        {staleSources.length > 0 ? (
+          <div className="mt-4 rounded-2xl border border-amber-400/45 bg-amber-400/10 px-4 py-3 text-sm text-amber-300">
+            <p className="text-xs uppercase tracking-[0.2em] text-amber-300">Stale sources</p>
+            <p className="mt-2 text-sm text-amber-200/90">
+              {staleSources
+                .map((source) => {
+                  const label = source.sourceLabel
+                    ? `${source.sourceType} (${source.sourceLabel})`
+                    : source.sourceType;
+                  const lastSuccess = formatRelativeTime(source.lastSuccessAt ?? null);
+                  const retry =
+                    source.nextRetryAt ? `, retry ${formatRelativeTime(source.nextRetryAt)}` : "";
+                  return `${label} last success ${lastSuccess}${retry}`;
+                })
+                .join(" | ")}
+            </p>
+          </div>
+        ) : null}
 
-          <AlertsToolbar
-            searchTerm={searchTerm}
-            onSearchTermChange={setSearchTerm}
-            searchInputRef={searchInputRef}
-            filterSource={filterSource}
-            filterSeverity={filterSeverity}
-            sourceFilterOptions={sourceFilterOptions}
-            severityFilterOptions={severityFilterOptions}
-            onFilterSourceChange={handleFilterSourceChange}
-            onFilterSeverityChange={handleFilterSeverityChange}
-            viewMode={viewMode}
-            onViewModeChange={handleViewModeChange}
-            isLoadingAlerts={isLoadingAlerts}
-            onRefresh={() => void loadAlerts()}
-            activeCount={filteredAlerts.length}
-          />
+        <AlertsToolbar
+          searchTerm={searchTerm}
+          onSearchTermChange={setSearchTerm}
+          searchInputRef={searchInputRef}
+          filterSource={filterSource}
+          filterSeverity={filterSeverity}
+          sourceFilterOptions={sourceFilterOptions}
+          severityFilterOptions={severityFilterOptions}
+          onFilterSourceChange={handleFilterSourceChange}
+          onFilterSeverityChange={handleFilterSeverityChange}
+          viewMode={viewMode}
+          onViewModeChange={handleViewModeChange}
+          isLoadingAlerts={isLoadingAlerts}
+          onRefresh={loadAlerts}
+          activeCount={filteredAlerts.length}
+        />
 
-          <AlertsBulkActions
-            filteredAlerts={filteredAlerts}
+        <AlertsBulkActions
+          filteredAlerts={filteredAlerts}
+          selectedAlertIds={selectedAlertIds}
+          criticalCount={criticalCount}
+          warningCount={warningCount}
+          onSelectAll={selectAllFiltered}
+          onClearSelection={clearSelectedAlerts}
+          onExportAlerts={exportAlertsToCsv}
+          canAcknowledge={canAcknowledge}
+          onBulkUpdate={updateAlertStateBulk}
+        />
+
+        {viewMode === "cards" ? (
+          <AlertsCardsView
+            alerts={filteredAlerts}
+            expandedAlertId={expandedAlertId}
             selectedAlertIds={selectedAlertIds}
-            onSelectAll={selectAllFiltered}
-            onClearSelection={clearSelectedAlerts}
-            onExportAlerts={exportAlertsToCsv}
+            alertNoteDraft={alertNoteDraft}
+            onAlertNoteChange={setAlertNoteDraft}
+            onSelectAlert={setSelectedAlertId}
+            onToggleExpanded={handleToggleExpanded}
+            onCloseExpanded={() => setExpandedAlertId(null)}
+            onToggleSelection={toggleAlertSelection}
+            onUpdateAlertState={updateAlertState}
+            getAlertSourceUrl={getAlertSourceUrl}
             canAcknowledge={canAcknowledge}
-            onBulkUpdate={updateAlertStateBulk}
           />
-
-          {viewMode === "cards" ? (
-            <AlertsCardsView
-              alerts={filteredAlerts}
-              expandedAlertId={expandedAlertId}
-              selectedAlertIds={selectedAlertIds}
-              alertNoteDraft={alertNoteDraft}
-              onAlertNoteChange={setAlertNoteDraft}
-              onSelectAlert={setSelectedAlertId}
-              onToggleExpanded={handleToggleExpanded}
-              onCloseExpanded={() => setExpandedAlertId(null)}
-              onToggleSelection={toggleAlertSelection}
-              onUpdateAlertState={updateAlertState}
-              getAlertSourceUrl={getAlertSourceUrl}
-              canAcknowledge={canAcknowledge}
-            />
-          ) : viewMode === "table" ? (
-            <AlertsTableView
-              alerts={filteredAlerts}
-              expandedAlertId={expandedAlertId}
-              selectedAlertIds={selectedAlertIds}
-              alertNoteDraft={alertNoteDraft}
-              onAlertNoteChange={setAlertNoteDraft}
-              onSelectAlert={setSelectedAlertId}
-              onToggleExpanded={handleToggleExpanded}
-              onToggleSelection={toggleAlertSelection}
-              onUpdateAlertState={updateAlertState}
-              getAlertSourceUrl={getAlertSourceUrl}
-              canAcknowledge={canAcknowledge}
-            />
-          ) : (
-            <AlertsSplitView
-              alerts={filteredAlerts}
-              selectedAlertId={selectedAlertId}
-              selectedAlert={selectedAlert}
-              selectedAlertStatus={selectedAlertStatus}
-              selectedAlertSourceUrl={selectedAlertSourceUrl}
-              selectedAlertIds={selectedAlertIds}
-              listItemRefs={listItemRefs}
-              alertNoteDraft={alertNoteDraft}
-              onAlertNoteChange={setAlertNoteDraft}
-              onSelectAlert={setSelectedAlertId}
-              onToggleSelection={toggleAlertSelection}
-              onUpdateAlertState={updateAlertState}
-              getAlertSourceUrl={getAlertSourceUrl}
-              canAcknowledge={canAcknowledge}
-            />
-          )}
-        </main>
+        ) : viewMode === "table" ? (
+          <AlertsTableView
+            alerts={filteredAlerts}
+            expandedAlertId={expandedAlertId}
+            selectedAlertIds={selectedAlertIds}
+            alertNoteDraft={alertNoteDraft}
+            onAlertNoteChange={setAlertNoteDraft}
+            onSelectAlert={setSelectedAlertId}
+            onToggleExpanded={handleToggleExpanded}
+            onToggleSelection={toggleAlertSelection}
+            onUpdateAlertState={updateAlertState}
+            getAlertSourceUrl={getAlertSourceUrl}
+            canAcknowledge={canAcknowledge}
+          />
+        ) : (
+          <AlertsSplitView
+            alerts={filteredAlerts}
+            selectedAlertId={selectedAlertId}
+            selectedAlert={selectedAlert}
+            selectedAlertStatus={selectedAlertStatus}
+            selectedAlertSourceUrl={selectedAlertSourceUrl}
+            selectedAlertIds={selectedAlertIds}
+            listItemRefs={listItemRefs}
+            alertNoteDraft={alertNoteDraft}
+            onAlertNoteChange={setAlertNoteDraft}
+            onSelectAlert={setSelectedAlertId}
+            onToggleSelection={toggleAlertSelection}
+            onUpdateAlertState={updateAlertState}
+            getAlertSourceUrl={getAlertSourceUrl}
+            canAcknowledge={canAcknowledge}
+          />
+        )}
       </div>
-    </div>
+    </main>
   );
 }

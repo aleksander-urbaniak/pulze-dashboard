@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 import type { TrendDatum } from "../lib/analytics";
 
@@ -10,9 +10,14 @@ const CHART_WIDTH = 640;
 const CHART_HEIGHT = 240;
 const PADDING_X = 32;
 const PADDING_Y = 28;
+const TWEEN_MS = 680;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
+}
+
+function easeOutCubic(t: number) {
+  return 1 - Math.pow(1 - t, 3);
 }
 
 function buildSmoothPath(points: Point[], minY: number, maxY: number) {
@@ -41,9 +46,54 @@ function buildSmoothPath(points: Point[], minY: number, maxY: number) {
 export default function AlertChart({ data }: { data: TrendDatum[] }) {
   const gradientId = useId().replace(/:/g, "");
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const [displayedValues, setDisplayedValues] = useState<number[]>(() => data.map(() => 0));
+  const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const targetValues = data.map((item) => item.value);
+    const startValues =
+      displayedValues.length === targetValues.length
+        ? displayedValues
+        : targetValues.map(() => 0);
+
+    if (targetValues.length === 0) {
+      setDisplayedValues([]);
+      return;
+    }
+
+    if (rafRef.current) {
+      window.cancelAnimationFrame(rafRef.current);
+    }
+
+    const startedAt = performance.now();
+    const tick = (now: number) => {
+      const progress = Math.min(1, (now - startedAt) / TWEEN_MS);
+      const eased = easeOutCubic(progress);
+
+      const nextValues = targetValues.map((target, index) => {
+        const start = startValues[index] ?? 0;
+        return start + (target - start) * eased;
+      });
+      setDisplayedValues(nextValues);
+
+      if (progress < 1) {
+        rafRef.current = window.requestAnimationFrame(tick);
+      }
+    };
+
+    rafRef.current = window.requestAnimationFrame(tick);
+
+    return () => {
+      if (rafRef.current) {
+        window.cancelAnimationFrame(rafRef.current);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
 
   const { points, linePath, areaPath, baseline } = useMemo(() => {
-    const safeMax = Math.max(1, ...data.map((item) => item.value));
+    const targetMax = Math.max(1, ...data.map((item) => item.value));
+    const safeMax = targetMax;
     const innerWidth = CHART_WIDTH - PADDING_X * 2;
     const innerHeight = CHART_HEIGHT - PADDING_Y * 2;
     const baselineY = CHART_HEIGHT - PADDING_Y;
@@ -51,7 +101,8 @@ export default function AlertChart({ data }: { data: TrendDatum[] }) {
     const pts = data.map((item, index) => {
       const ratio = data.length <= 1 ? 0.5 : index / (data.length - 1);
       const x = PADDING_X + ratio * innerWidth;
-      const y = PADDING_Y + (1 - item.value / safeMax) * innerHeight;
+      const value = displayedValues[index] ?? 0;
+      const y = PADDING_Y + (1 - value / safeMax) * innerHeight;
       return { x, y };
     });
 
@@ -62,7 +113,7 @@ export default function AlertChart({ data }: { data: TrendDatum[] }) {
         : "";
 
     return { points: pts, linePath: path, areaPath: area, baseline: baselineY };
-  }, [data]);
+  }, [data, displayedValues]);
 
   const hoverPoint = hoverIndex === null ? null : points[hoverIndex];
   const hoverDatum = hoverIndex === null ? null : data[hoverIndex];
@@ -83,9 +134,7 @@ export default function AlertChart({ data }: { data: TrendDatum[] }) {
           </linearGradient>
         </defs>
         <path d={`M ${PADDING_X} ${baseline} H ${CHART_WIDTH - PADDING_X}`} stroke="rgb(var(--border))" />
-        {areaPath ? (
-          <path d={areaPath} fill={`url(#${gradientId}-fill)`} stroke="none" />
-        ) : null}
+        {areaPath ? <path d={areaPath} fill={`url(#${gradientId}-fill)`} stroke="none" /> : null}
         {linePath ? (
           <path
             d={linePath}

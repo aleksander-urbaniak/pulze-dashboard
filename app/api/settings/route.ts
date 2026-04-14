@@ -115,7 +115,8 @@ export async function PUT(request: Request) {
     return {
       gradient: clamp(input.gradient, fallback.gradient),
       glow: clamp(input.glow, fallback.glow),
-      noise: clamp(input.noise, fallback.noise)
+      noise: clamp(input.noise, fallback.noise),
+      radius: clamp(input.radius, fallback.radius)
     };
   }
 

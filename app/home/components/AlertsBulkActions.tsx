@@ -3,6 +3,8 @@ import type { Alert } from "../../../lib/types";
 type AlertsBulkActionsProps = {
   filteredAlerts: Alert[];
   selectedAlertIds: Set<string>;
+  criticalCount: number;
+  warningCount: number;
   onSelectAll: () => void;
   onClearSelection: () => void;
   onExportAlerts: (alerts: Alert[]) => void;
@@ -13,6 +15,8 @@ type AlertsBulkActionsProps = {
 export default function AlertsBulkActions({
   filteredAlerts,
   selectedAlertIds,
+  criticalCount,
+  warningCount,
   onSelectAll,
   onClearSelection,
   onExportAlerts,
@@ -33,22 +37,28 @@ export default function AlertsBulkActions({
   };
 
   return (
-    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-surface/90 px-3 py-2 text-xs uppercase tracking-[0.2em] text-muted sm:px-4 sm:py-3">
+    <div className="mt-4 grid items-center gap-3 px-1 py-1 text-xs uppercase tracking-[0.18em] text-[#60748e] dark:text-slate-400 sm:px-0 lg:grid-cols-[1fr_auto_1fr]">
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
           onClick={handleToggleSelectAll}
-          className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em]"
+          className="rounded-xl border border-border bg-surface/90 px-4 py-2 text-xs uppercase tracking-[0.2em] text-text hover:border-accent/60"
         >
           {allSelected ? "Clear all" : "Select all"}
         </button>
-        {hasSelection ? (
-          <span className="text-xs uppercase tracking-[0.2em] text-muted">
-            {selectedAlertIds.size} selected
-          </span>
-        ) : null}
+        <span className="text-xs uppercase tracking-[0.2em] text-[#60748e] dark:text-slate-400">
+          {hasSelection ? `${selectedAlertIds.size} selected` : `${filteredAlerts.length} total`}
+        </span>
       </div>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex items-center justify-start gap-2 lg:justify-center">
+        <span className="rounded-md border border-rose-500/45 bg-rose-500/12 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-rose-300">
+          {criticalCount} Critical
+        </span>
+        <span className="rounded-md border border-amber-400/50 bg-amber-400/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-300">
+          {warningCount} Warning
+        </span>
+      </div>
+      <div className="flex flex-wrap items-center gap-2 lg:justify-end">
         <button
           type="button"
           onClick={() => {
@@ -57,7 +67,7 @@ export default function AlertsBulkActions({
               : filteredAlerts;
             onExportAlerts(target);
           }}
-          className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em]"
+          className="rounded-xl border border-border bg-surface/90 px-4 py-2 text-xs uppercase tracking-[0.2em] text-text hover:border-accent/60"
         >
           Export CSV
         </button>
@@ -65,7 +75,7 @@ export default function AlertsBulkActions({
           type="button"
           disabled={!hasSelection || !canAcknowledge}
           onClick={() => onBulkUpdate("acknowledged")}
-          className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em] disabled:opacity-50"
+          className="rounded-xl border border-border bg-surface/90 px-4 py-2 text-xs uppercase tracking-[0.2em] text-text hover:border-accent/60 disabled:opacity-50"
         >
           Acknowledge
         </button>
@@ -73,15 +83,15 @@ export default function AlertsBulkActions({
           type="button"
           disabled={!hasSelection || !canAcknowledge}
           onClick={() => onBulkUpdate("resolved")}
-          className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em] disabled:opacity-50"
+          className="rounded-xl border border-emerald-400/35 bg-emerald-400/90 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#02110d] hover:bg-emerald-300 disabled:opacity-50"
         >
-          Resolve
+          Resolve selected
         </button>
         {hasSelection ? (
           <button
             type="button"
             onClick={onClearSelection}
-            className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em] text-muted"
+            className="rounded-xl border border-border bg-surface/90 px-4 py-2 text-xs uppercase tracking-[0.2em] text-muted hover:border-accent/60"
           >
             Clear
           </button>
