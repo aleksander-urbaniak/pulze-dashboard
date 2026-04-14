@@ -323,13 +323,20 @@ export default function AnalyticsPage() {
           <div className="mx-auto w-full max-w-[1520px]">
             <AnalyticsHeader
               user={user}
-              isLoadingAlerts={isLoadingAlerts}
-              onRefresh={() => {
-                void loadAlerts();
-                void loadAlertLog();
-                void loadAnalyticsSummary();
-              }}
             />
+            <div className="mt-3 flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  void loadAlerts();
+                  void loadAlertLog();
+                  void loadAnalyticsSummary();
+                }}
+                className="btn-unified btn-unified-primary h-10 px-4"
+              >
+                {isLoadingAlerts ? "Refreshing" : "Refresh"}
+              </button>
+            </div>
 
             {errors.length > 0 ? (
               <div className="mt-4 rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-500">

@@ -1,8 +1,14 @@
 import { useMemo, useState } from "react";
 import clsx from "clsx";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faFilter, faUser, faBoxArchive, faShieldHalved } from "@fortawesome/free-solid-svg-icons";
+import {
+  faFilter,
+  faUser,
+  faBoxArchive,
+  faClockRotateLeft
+} from "@fortawesome/free-solid-svg-icons";
 
+import PageSectionHeader from "../../../components/PageSectionHeader";
 import FilterSelect from "../../../components/FilterSelect";
 import type { AuditLogEntry } from "../types";
 import {
@@ -96,17 +102,13 @@ export default function AuditSection({
   }, [actionFilter, auditLogs, endDate, resourceFilter, startDate]);
 
   return (
-    <section className="space-y-5 p-2 lg:p-0">
-      <div>
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <FontAwesomeIcon icon={faShieldHalved} className="h-5 w-5 shrink-0 text-accent" />
-            <h2 className="text-[2.2rem] font-semibold leading-none text-text">Audit Logs</h2>
-          </div>
-          {headerRight}
-        </div>
-        <p className="mt-2 text-sm text-slate-500">Track and monitor all activities across your infrastructure.</p>
-      </div>
+    <section className="space-y-4">
+      <PageSectionHeader
+        icon={faClockRotateLeft}
+        title="Audit Trail"
+        subtitle="Track and monitor all activities across your infrastructure."
+        right={headerRight}
+      />
 
       <div className={clsx(settingsPanelCard, "p-4")}>
         <div className="mb-4 flex items-center justify-between">

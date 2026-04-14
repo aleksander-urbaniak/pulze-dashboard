@@ -1,8 +1,9 @@
 import clsx from "clsx";
 import { useTheme } from "next-themes";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faPalette } from "@fortawesome/free-solid-svg-icons";
+import { faBrush } from "@fortawesome/free-solid-svg-icons";
 
+import PageSectionHeader from "../../../components/PageSectionHeader";
 import { defaultAppearance } from "../../../lib/appearance";
 import type { Settings } from "../../../lib/types";
 import {
@@ -129,17 +130,13 @@ export default function AppearanceSection({
   }
 
   return (
-    <section className="space-y-6">
-      <div>
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <FontAwesomeIcon icon={faPalette} className="h-5 w-5 shrink-0 text-accent" />
-            <h2 className="text-[2.2rem] font-semibold leading-none text-text">Theme Studio</h2>
-          </div>
-          {headerRight}
-        </div>
-        <p className="mt-2 text-sm text-slate-500">Tune branding, accent, and visual effects across the dashboard.</p>
-      </div>
+    <section className="space-y-4">
+      <PageSectionHeader
+        icon={faBrush}
+        title="Apperance"
+        subtitle="Tune branding, accent, and visual effects across the dashboard."
+        right={headerRight}
+      />
 
       <div className="grid gap-6 xl:grid-cols-[430px_minmax(0,1fr)]">
       <aside className={clsx(settingsShellCard, "custom-scrollbar p-5 xl:max-h-[calc(100vh-10rem)] xl:overflow-y-auto")}>
@@ -370,8 +367,8 @@ export default function AppearanceSection({
                       <div className="flex items-center gap-3">
                         <span className="h-7 w-7 rounded-lg" style={{ backgroundColor: `${palette.accent}26` }} />
                         <div>
-                          <p className="text-xs font-semibold" style={{ color: palette.text }}>Weekly Growth</p>
-                          <p className="text-[10px]" style={{ color: palette.muted }}>Active Analytics</p>
+                          <p className="text-xs font-semibold" style={{ color: palette.text }}>Active Alerts</p>
+                          <p className="text-[10px]" style={{ color: palette.muted }}>2 critical â€˘ 2 warning</p>
                         </div>
                       </div>
                       <span style={{ color: palette.muted }}>&gt;</span>
@@ -379,7 +376,7 @@ export default function AppearanceSection({
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
-                    {[{ title: "Tasks Done", value: "12" }, { title: "Theme Swaps", value: "45" }].map((card) => (
+                    {[{ title: "Avg. Resolution", value: "12m" }, { title: "Resolved 24h", value: "3" }].map((card) => (
                       <div
                         key={card.title}
                         className="border p-3"
@@ -406,7 +403,7 @@ export default function AppearanceSection({
                     borderRadius: `calc(10px + ${radius * 0.3}px)`
                   }}
                 >
-                  Execute Task
+                  Resolve Selected
                 </button>
                 <div className="mx-auto mt-4 h-1 w-20 rounded-full" style={{ backgroundColor: `${palette.muted}66` }} />
               </div>

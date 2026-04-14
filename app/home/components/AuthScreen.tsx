@@ -27,7 +27,7 @@ type AuthScreenProps = {
   setSetupForm: React.Dispatch<React.SetStateAction<SetupForm>>;
   loginError: string | null;
   setupError: string | null;
-  ssoProviders: { saml: boolean };
+  ssoProviders: { saml: boolean; samlProviderName: string };
   onLoginSubmit: (event: React.FormEvent) => void;
   onSetupSubmit: (event: React.FormEvent) => void;
 };
@@ -51,25 +51,21 @@ export default function AuthScreen({
 }: AuthScreenProps) {
   const isSetupView = needsSetup && !isCheckingSetup;
   const fieldClassName =
-    "w-full rounded-xl border border-border/80 bg-base/60 px-4 py-3 text-sm text-text placeholder:text-muted/80 transition focus:border-accent/60 focus:outline-none focus:ring-2 focus:ring-accent/25";
+    "w-full rounded-xl border border-border/80 bg-surface px-4 py-3 text-sm text-text placeholder:text-muted/80 transition focus:border-accent/60 focus:outline-none focus:ring-2 focus:ring-accent/25";
   const infoCardClassName =
-    "rounded-2xl border border-border/80 bg-base/45 p-4 shadow-[inset_0_1px_0_rgb(var(--surface)/0.2)]";
+    "rounded-2xl border border-border/80 bg-surface p-4";
 
   return (
     <div className="flex min-h-screen items-center justify-center px-4 py-6 sm:px-6 sm:py-10">
       <div
-        className={`relative w-full overflow-hidden rounded-3xl border border-border/80 bg-surface/90 shadow-[0_24px_80px_rgb(var(--base)/0.35)] backdrop-blur ${
+        className={`relative w-full overflow-hidden rounded-3xl border border-border/80 bg-surface ${
           isSetupView ? "max-w-4xl p-6 sm:p-10" : "max-w-md p-5 sm:p-7"
         }`}
       >
-        <div aria-hidden className="pointer-events-none absolute inset-0">
-          <div className="absolute -left-14 -top-16 h-44 w-44 rounded-full bg-accent/12 blur-3xl" />
-          <div className="absolute -bottom-20 right-0 h-52 w-52 rounded-full bg-accent/10 blur-3xl" />
-        </div>
         <div className="relative z-10">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="inline-flex items-center gap-3">
-              <span className="brand-logo flex h-10 w-10 items-center justify-center rounded-2xl border border-border bg-surface/90 shadow-card">
+              <span className="brand-logo flex h-10 w-10 items-center justify-center rounded-2xl border border-border bg-surface">
                 <span className="brand-logo__image" />
                 <svg width="22" height="22" viewBox="0 0 32 32" fill="none" className="brand-logo__fallback">
                   <path
@@ -83,9 +79,7 @@ export default function AuthScreen({
               </span>
               <div>
                 <p className="text-sm uppercase tracking-[0.3em] text-muted">PulZe</p>
-                <h1 className={`font-semibold ${isSetupView ? "text-3xl" : "text-2xl"}`}>
-                  {needsSetup ? "Welcome to PulZe" : "Monitoring Login"}
-                </h1>
+                <h1 className={`font-semibold ${isSetupView ? "text-3xl" : "text-2xl"}`}>Pulze Dashboard</h1>
                 {!isSetupView ? (
                   <p className="mt-2 text-sm text-muted">Sign in to continue monitoring.</p>
                 ) : null}
@@ -124,7 +118,7 @@ export default function AuthScreen({
                   <p className="text-xs uppercase tracking-[0.3em] text-muted">Setup checklist</p>
                   <ol className="mt-4 space-y-2.5 text-sm text-muted">
                     <li className="flex items-center gap-2">
-                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent text-xs font-semibold text-white shadow-[0_6px_16px_rgb(var(--accent)/0.45)]">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent text-xs font-semibold text-white">
                         1
                       </span>
                       Create your admin account.
@@ -146,19 +140,19 @@ export default function AuthScreen({
                 <div className="mt-6">
                   <p className="text-xs uppercase tracking-[0.3em] text-muted">Data source guides</p>
                   <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-2xl border border-border/80 bg-base/45 p-4 transition hover:border-accent/40">
+                    <div className="rounded-2xl border border-border/80 bg-surface p-4 transition hover:border-accent/40">
                       <p className="text-sm font-semibold">Prometheus + Alertmanager</p>
                       <p className="mt-2 text-xs text-muted">
                         Add the base URL, and PulZe will pull `/api/v2/alerts`.
                       </p>
                     </div>
-                    <div className="rounded-2xl border border-border/80 bg-base/45 p-4 transition hover:border-accent/40">
+                    <div className="rounded-2xl border border-border/80 bg-surface p-4 transition hover:border-accent/40">
                       <p className="text-sm font-semibold">Zabbix</p>
                       <p className="mt-2 text-xs text-muted">
                         Use the base URL and API token for JSON-RPC access.
                       </p>
                     </div>
-                    <div className="rounded-2xl border border-border/80 bg-base/45 p-4 transition hover:border-accent/40 sm:col-span-2">
+                    <div className="rounded-2xl border border-border/80 bg-surface p-4 transition hover:border-accent/40 sm:col-span-2">
                       <p className="text-sm font-semibold">Uptime Kuma</p>
                       <p className="mt-2 text-xs text-muted">
                         Choose status page mode or API key mode and provide the slug.
@@ -167,7 +161,7 @@ export default function AuthScreen({
                   </div>
                 </div>
               </div>
-              <form onSubmit={onSetupSubmit} className="space-y-4 rounded-2xl border border-border/75 bg-base/35 p-4 sm:p-5">
+              <form onSubmit={onSetupSubmit} className="space-y-4 p-0">
                 <div className="grid gap-3 md:grid-cols-2">
                   <input
                     value={setupForm.firstName}
@@ -216,14 +210,14 @@ export default function AuthScreen({
                 {setupError ? <p className="text-sm text-red-500">{setupError}</p> : null}
                 <button
                   type="submit"
-                  className="w-full rounded-xl bg-accent py-3.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgb(var(--accent)/0.38)]"
+                  className="w-full rounded-xl bg-accent py-3.5 text-sm font-semibold text-white"
                 >
                   Create Admin Account
                 </button>
               </form>
             </div>
           ) : (
-            <form onSubmit={onLoginSubmit} className="mt-6 space-y-4 rounded-2xl border border-border/75 bg-base/35 p-4 sm:p-5">
+            <form onSubmit={onLoginSubmit} className="mt-6 space-y-4">
               {!isTwoFactorStep ? (
                 <>
                   <div>
@@ -277,7 +271,7 @@ export default function AuthScreen({
               {loginError ? <p className="text-sm text-red-500">{loginError}</p> : null}
               <button
                 type="submit"
-                className="w-full rounded-xl bg-accent py-3.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgb(var(--accent)/0.38)]"
+                className="w-full rounded-xl bg-accent py-3.5 text-sm font-semibold text-white"
               >
                 {isTwoFactorStep ? "Verify Code" : "Sign In"}
               </button>
@@ -294,9 +288,9 @@ export default function AuthScreen({
                 <div className="space-y-2">
                   <a
                     href="/api/auth/sso/saml/start"
-                    className="block w-full rounded-xl border border-border/80 bg-base/60 py-3 text-center text-sm font-semibold"
+                    className="block w-full rounded-xl border border-border/80 bg-surface py-3 text-center text-sm font-semibold"
                   >
-                    Continue with SAML SSO
+                    Continue with {ssoProviders.samlProviderName}
                   </a>
                 </div>
               ) : null}

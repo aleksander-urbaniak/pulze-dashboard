@@ -113,9 +113,10 @@ function createKumaSource(): KumaSource {
 export default function SettingsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const requestedTabFromUrl = searchParams.get("tab") as TabKey | null;
   const { setTheme } = useTheme();
   const [user, setUser] = useState<User | null>(null);
-  const [activeTab, setActiveTab] = useState<TabKey>("data");
+  const [activeTab, setActiveTab] = useState<TabKey>(requestedTabFromUrl ?? "data");
   const [settingsDraft, setSettingsDraft] = useState<Settings>(emptySettings);
   const [canEditSettings, setCanEditSettings] = useState(false);
   const [settingsStatus, setSettingsStatus] = useState<string | null>(null);
@@ -181,7 +182,7 @@ export default function SettingsPage() {
     const items: Array<{ value: TabKey; label: string }> = [{ value: "users", label: "Users" }];
     if (canViewSettings) {
       items.unshift({ value: "data", label: "Data Sources" });
-      items.push({ value: "appearance", label: "Appearance" });
+      items.push({ value: "appearance", label: "Apperance" });
     }
     if (canReadAudit) {
       items.push({ value: "audit", label: "Audit Log" });
@@ -193,11 +194,11 @@ export default function SettingsPage() {
   }, [canConfigureAuth, canReadAudit, canViewSettings]);
 
   useEffect(() => {
-    const requestedTab = searchParams.get("tab") as TabKey | null;
+    const requestedTab = requestedTabFromUrl;
     if (requestedTab && settingsTabItems.some((entry) => entry.value === requestedTab)) {
       setActiveTab(requestedTab);
     }
-  }, [searchParams, settingsTabItems]);
+  }, [requestedTabFromUrl, settingsTabItems]);
 
   useEffect(() => {
     if (!user) {
@@ -215,12 +216,19 @@ export default function SettingsPage() {
     if (settingsTabItems.length === 0) {
       return;
     }
-    const currentTab = searchParams.get("tab");
+    const currentTab = requestedTabFromUrl;
+    if (
+      currentTab &&
+      settingsTabItems.some((entry) => entry.value === currentTab) &&
+      currentTab !== activeTab
+    ) {
+      return;
+    }
     if (currentTab === activeTab) {
       return;
     }
     router.replace(`/settings?tab=${activeTab}`, { scroll: false });
-  }, [activeTab, router, searchParams, settingsTabItems]);
+  }, [activeTab, requestedTabFromUrl, router, settingsTabItems]);
 
   useEffect(() => {
     if (settingsDraft.appearance) {
@@ -690,7 +698,7 @@ export default function SettingsPage() {
         }}
       />
       <div className="flex-1 min-w-0 border-l border-[rgb(var(--app-divider)/0.82)] bg-[rgb(var(--app-main-bg))]">
-        <main className="w-full px-5 py-8 sm:px-6 sm:py-10 lg:px-8">
+        <main className="w-full min-h-screen px-4 pb-6 pt-2 sm:px-6 lg:px-6">
           <div className="mx-auto w-full max-w-[1520px]">
           {activeTab === "data" && canViewSettings ? (
             <DataSourcesSection

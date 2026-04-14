@@ -40,6 +40,16 @@ const emptySettings: Settings = {
   appearance: defaultAppearance
 };
 
+const disappearedEventsStoragePrefix = "pulze.disappearedEvents";
+
+type DisappearedAlertEvent = {
+  id: string;
+  source: string;
+  startedAt: string;
+  disappearedAt: string;
+  durationMinutes: number;
+};
+
 export default function HomePage() {
   const [user, setUser] = useState<User | null>(null);
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -55,7 +65,10 @@ export default function HomePage() {
   const [loginTotpCode, setLoginTotpCode] = useState("");
   const [loginChallengeToken, setLoginChallengeToken] = useState<string | null>(null);
   const [loginError, setLoginError] = useState<string | null>(null);
-  const [ssoProviders, setSsoProviders] = useState<{ saml: boolean }>({ saml: false });
+  const [ssoProviders, setSsoProviders] = useState<{ saml: boolean; samlProviderName: string }>({
+    saml: false,
+    samlProviderName: "SAML SSO"
+  });
   const [setupForm, setSetupForm] = useState({
     firstName: "",
     lastName: "",
@@ -74,12 +87,16 @@ export default function HomePage() {
   const [expandedAlertId, setExpandedAlertId] = useState<string | null>(null);
   const [selectedAlertIds, setSelectedAlertIds] = useState<Set<string>>(new Set());
   const [alertNoteDraft, setAlertNoteDraft] = useState("");
+  const [disappearedEvents, setDisappearedEvents] = useState<DisappearedAlertEvent[]>([]);
+  const [disappearedEventsHydratedKey, setDisappearedEventsHydratedKey] = useState<string | null>(null);
   const lastAlertIdsRef = useRef<Set<string> | null>(null);
+  const lastAlertsByKeyRef = useRef<Map<string, Alert>>(new Map());
   const notificationsRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const listItemRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
   const sourceFilterOptions = sourceOptions.map((option) => ({ value: option, label: option }));
   const severityFilterOptions = severityOptions.map((option) => ({ value: option, label: option }));
+  const disappearedEventsStorageKey = `${disappearedEventsStoragePrefix}.${user?.id ?? "guest"}`;
 
   useEffect(() => {
     void loadSession();
@@ -121,6 +138,49 @@ export default function HomePage() {
       writeCookieValue(filterCookieKey, "", filterCookieMaxAge);
     }
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !user) {
+      return;
+    }
+    try {
+      const raw = window.localStorage.getItem(disappearedEventsStorageKey);
+      if (!raw) {
+        return;
+      }
+      const parsed = JSON.parse(raw) as DisappearedAlertEvent[];
+      if (!Array.isArray(parsed)) {
+        return;
+      }
+      const now = Date.now();
+      const maxAgeMs = 14 * 24 * 60 * 60 * 1000;
+      const normalized = parsed
+        .filter((event) => {
+          const disappearedAt = Date.parse(event.disappearedAt);
+          return Number.isFinite(disappearedAt) && now - disappearedAt <= maxAgeMs;
+        })
+        .slice(0, 500);
+      setDisappearedEvents(normalized);
+    } catch {
+      window.localStorage.removeItem(disappearedEventsStorageKey);
+    } finally {
+      setDisappearedEventsHydratedKey(disappearedEventsStorageKey);
+    }
+  }, [disappearedEventsStorageKey, user]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !user) {
+      return;
+    }
+    if (disappearedEventsHydratedKey !== disappearedEventsStorageKey) {
+      return;
+    }
+    try {
+      window.localStorage.setItem(disappearedEventsStorageKey, JSON.stringify(disappearedEvents));
+    } catch {
+      // ignore storage issues
+    }
+  }, [disappearedEvents, disappearedEventsHydratedKey, disappearedEventsStorageKey, user]);
 
   function persistFilters(next?: {
     source?: SourceOption;
@@ -377,12 +437,13 @@ export default function HomePage() {
   async function loadSsoProviders() {
     const response = await fetch("/api/auth/sso/providers");
     if (!response.ok) {
-      setSsoProviders({ saml: false });
+      setSsoProviders({ saml: false, samlProviderName: "SAML SSO" });
       return;
     }
-    const data = (await response.json()) as { saml?: boolean };
+    const data = (await response.json()) as { saml?: boolean; samlProviderName?: string };
     setSsoProviders({
-      saml: Boolean(data.saml)
+      saml: Boolean(data.saml),
+      samlProviderName: data.samlProviderName?.trim() || "SAML SSO"
     });
   }
 
@@ -406,17 +467,39 @@ export default function HomePage() {
     setAlerts(data.alerts);
     setErrors(data.errors ?? []);
     setSourceHealth(data.health ?? null);
-    const currentIds = new Set(data.alerts.map((alert) => alert.groupKey ?? alert.id));
+    const alertKey = (alert: Alert) => alert.groupKey ?? alert.id;
+    const currentMap = new Map<string, Alert>(data.alerts.map((alert) => [alertKey(alert), alert]));
+    const currentIds = new Set(currentMap.keys());
     if (lastAlertIdsRef.current) {
       const newAlerts = data.alerts.filter(
-        (alert) => !lastAlertIdsRef.current?.has(alert.groupKey ?? alert.id)
+        (alert) => !lastAlertIdsRef.current?.has(alertKey(alert))
       );
       if (newAlerts.length > 0) {
         setNewAlertCount((count) => count + newAlerts.length);
         setNotifications((prev) => [...newAlerts, ...prev].slice(0, 20));
       }
+
+      const disappearedEventsBatch = Array.from(lastAlertsByKeyRef.current.entries())
+        .filter(([key]) => !currentMap.has(key))
+        .map(([key, previousAlert]) => {
+          const disappearedAt = new Date().toISOString();
+          const durationMs = Date.parse(disappearedAt) - Date.parse(previousAlert.timestamp);
+          const durationMinutes =
+            Number.isFinite(durationMs) && durationMs > 0 ? Math.round(durationMs / 60000) : 0;
+          return {
+            id: key,
+            source: previousAlert.sourceLabel?.trim() || previousAlert.source || "Unknown",
+            startedAt: previousAlert.timestamp,
+            disappearedAt,
+            durationMinutes
+          } as DisappearedAlertEvent;
+        });
+      if (disappearedEventsBatch.length > 0) {
+        setDisappearedEvents((prev) => [...disappearedEventsBatch, ...prev].slice(0, 500));
+      }
     }
     lastAlertIdsRef.current = currentIds;
+    lastAlertsByKeyRef.current = currentMap;
     setIsLoadingAlerts(false);
   }
 
@@ -576,6 +659,7 @@ export default function HomePage() {
             <DashboardHeader
               user={user}
               alerts={alerts}
+              disappearedEvents={disappearedEvents}
               notifications={notifications}
               newAlertCount={newAlertCount}
               isNotificationsOpen={isNotificationsOpen}

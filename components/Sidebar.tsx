@@ -47,9 +47,9 @@ const settingsIcons: Record<string, typeof faDatabase> = {
 };
 
 const staticSettingsItems = [
-  { value: "data", label: "Connections" },
+  { value: "data", label: "Data Sources" },
   { value: "users", label: "Users & Groups" },
-  { value: "appearance", label: "Brand Studio" },
+  { value: "appearance", label: "Apperance" },
   { value: "audit", label: "Audit Trail" },
   { value: "access", label: "SSO & Access" }
 ];
@@ -67,9 +67,15 @@ export default function Sidebar({
   const searchParams = useSearchParams();
   const initials = `${user.firstName?.[0] ?? ""}${user.lastName?.[0] ?? ""}`.toUpperCase();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    if (typeof window === "undefined") {
+      return false;
+    }
+    const saved = window.localStorage.getItem(sidebarCollapseKey);
+    return saved === "true";
+  });
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
-  const profileMenuCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const configurationItems = staticSettingsItems.filter((item) => {
     if (item.value === "data" || item.value === "appearance") {
       return user.permissions?.includes("settings.read");
@@ -92,41 +98,20 @@ export default function Sidebar({
     if (typeof window === "undefined") {
       return;
     }
-    const saved = window.localStorage.getItem(sidebarCollapseKey);
-    setIsCollapsed(saved === "true");
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
     window.localStorage.setItem(sidebarCollapseKey, String(isCollapsed));
   }, [isCollapsed]);
 
   useEffect(() => {
-    return () => {
-      if (profileMenuCloseTimer.current) {
-        clearTimeout(profileMenuCloseTimer.current);
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!profileMenuRef.current?.contains(event.target as Node)) {
+        setIsProfileMenuOpen(false);
       }
     };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
   }, []);
-
-  const openProfileMenu = () => {
-    if (profileMenuCloseTimer.current) {
-      clearTimeout(profileMenuCloseTimer.current);
-      profileMenuCloseTimer.current = null;
-    }
-    setIsProfileMenuOpen(true);
-  };
-
-  const scheduleCloseProfileMenu = () => {
-    if (profileMenuCloseTimer.current) {
-      clearTimeout(profileMenuCloseTimer.current);
-    }
-    profileMenuCloseTimer.current = setTimeout(() => {
-      setIsProfileMenuOpen(false);
-    }, 220);
-  };
 
   return (
     <aside
@@ -283,19 +268,19 @@ export default function Sidebar({
           )}
         >
           <div
+            ref={profileMenuRef}
             className="relative"
-            onMouseEnter={openProfileMenu}
-            onMouseLeave={scheduleCloseProfileMenu}
           >
             <button
               type="button"
               title={`${user.firstName} ${user.lastName} - ${user.email}`}
               onClick={() => {
-                if (isProfileMenuOpen) {
+                if (onOpenProfileEditor) {
                   setIsProfileMenuOpen(false);
+                  onOpenProfileEditor();
                   return;
                 }
-                openProfileMenu();
+                setIsProfileMenuOpen((prev) => !prev);
               }}
               className={clsx(
                 "w-full rounded-xl text-left transition hover:bg-white/5",
@@ -345,8 +330,6 @@ export default function Sidebar({
                   ? "pointer-events-auto translate-y-0 opacity-100"
                   : "pointer-events-none translate-y-2 opacity-0"
               )}
-              onMouseEnter={openProfileMenu}
-              onMouseLeave={scheduleCloseProfileMenu}
             >
               <button
                 type="button"
@@ -361,6 +344,24 @@ export default function Sidebar({
               </button>
             </div>
           </div>
+
+          {onOpenProfileEditor ? (
+            <button
+              type="button"
+              onClick={() => {
+                setIsProfileMenuOpen(false);
+                onOpenProfileEditor();
+              }}
+              title={isCollapsed ? "Edit Profile" : undefined}
+              className={clsx(
+                "radius-ui flex w-full items-center px-3 py-2 text-sm text-muted hover:bg-white/5 hover:text-text",
+                isCollapsed ? "justify-center md:h-10 md:w-10 md:px-0" : "gap-2"
+              )}
+            >
+              <FontAwesomeIcon icon={faUserGear} className="h-4 w-4 shrink-0" />
+              {!isCollapsed ? "Edit Profile" : null}
+            </button>
+          ) : null}
 
           {onLogout ? (
             <button

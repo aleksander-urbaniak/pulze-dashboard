@@ -394,6 +394,46 @@ h4 {
 }
 
 @layer utilities {
+  .btn-unified {
+    @apply border px-4 py-2.5 text-[11px] font-semibold tracking-[0.06em] transition;
+    border-radius: var(--ui-radius);
+    border-color: rgb(var(--border));
+    background-color: rgb(var(--surface) / 0.72);
+    color: rgb(var(--text));
+    box-shadow: 0 10px 26px -22px rgb(2 8 18 / 0.65);
+  }
+
+  .btn-unified:hover {
+    border-color: rgb(var(--accent) / 0.45);
+    color: rgb(var(--accent));
+  }
+
+  .btn-unified-primary {
+    border-color: rgb(var(--text) / 0.15);
+    background-color: rgb(var(--text));
+    color: rgb(var(--base));
+    box-shadow: 0 16px 40px -24px rgb(0 0 0 / 0.45);
+  }
+
+  .btn-unified-primary:hover {
+    color: rgb(var(--base));
+    filter: brightness(1.08);
+  }
+
+  .btn-unified-muted {
+    background-color: #0d1a30;
+    border-color: #22395c;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    transition:
+      background-color 220ms linear,
+      background-image 220ms linear,
+      border-color 220ms linear,
+      backdrop-filter 220ms linear,
+      -webkit-backdrop-filter 220ms linear,
+      box-shadow 220ms linear;
+  }
+
   select.rounded-xl {
     border-radius: 1rem;
   }

@@ -9,6 +9,13 @@ import styles from "../../page.module.css";
 type DashboardHeaderProps = {
   user: User;
   alerts: Alert[];
+  disappearedEvents: Array<{
+    id: string;
+    source: string;
+    startedAt: string;
+    disappearedAt: string;
+    durationMinutes: number;
+  }>;
   notifications: Alert[];
   newAlertCount: number;
   isNotificationsOpen: boolean;
@@ -21,6 +28,7 @@ type DashboardHeaderProps = {
 export default function DashboardHeader({
   user,
   alerts,
+  disappearedEvents,
   notifications,
   newAlertCount,
   isNotificationsOpen,
@@ -45,15 +53,23 @@ export default function DashboardHeader({
   );
 
   const referenceTimestamp = useMemo(() => {
-    const latest = alerts.reduce((max, alert) => {
+    const latestAlert = alerts.reduce((max, alert) => {
       const value = Date.parse(alert.timestamp);
       if (!Number.isFinite(value)) {
         return max;
       }
       return Math.max(max, value);
     }, 0);
+    const latestDisappeared = disappearedEvents.reduce((max, event) => {
+      const value = Date.parse(event.disappearedAt);
+      if (!Number.isFinite(value)) {
+        return max;
+      }
+      return Math.max(max, value);
+    }, 0);
+    const latest = Math.max(latestAlert, latestDisappeared);
     return latest > 0 ? latest : null;
-  }, [alerts]);
+  }, [alerts, disappearedEvents]);
 
   const activeLastHour = useMemo(() => {
     if (!referenceTimestamp) {
@@ -63,51 +79,98 @@ export default function DashboardHeader({
     return unresolvedAlerts.filter((alert) => Date.parse(alert.timestamp) >= cutoff).length;
   }, [referenceTimestamp, unresolvedAlerts]);
 
+  const sourceStats = useMemo(() => {
+    const cutoff24 = referenceTimestamp ? referenceTimestamp - 24 * 60 * 60 * 1000 : null;
+    const statsMap = new Map<
+      string,
+      {
+        unresolved: number;
+        critical: number;
+        warning: number;
+        resolved24: number;
+        resolutionTotalMinutes: number;
+        resolutionCount: number;
+      }
+    >();
+
+    const getEntry = (sourceName: string) => {
+      const existing = statsMap.get(sourceName);
+      if (existing) {
+        return existing;
+      }
+      const created = {
+        unresolved: 0,
+        critical: 0,
+        warning: 0,
+        resolved24: 0,
+        resolutionTotalMinutes: 0,
+        resolutionCount: 0
+      };
+      statsMap.set(sourceName, created);
+      return created;
+    };
+
+    alerts.forEach((alert) => {
+      const sourceName = alert.sourceLabel?.trim() || alert.source || "Unknown";
+      const entry = getEntry(sourceName);
+      entry.unresolved += 1;
+      if (alert.severity === "critical") {
+        entry.critical += 1;
+      } else if (alert.severity === "warning") {
+        entry.warning += 1;
+      }
+    });
+
+    disappearedEvents.forEach((event) => {
+      const sourceName = event.source?.trim() || "Unknown";
+      const entry = getEntry(sourceName);
+      if (Number.isFinite(event.durationMinutes) && event.durationMinutes >= 0) {
+        entry.resolutionTotalMinutes += event.durationMinutes;
+        entry.resolutionCount += 1;
+      }
+      const disappearedTimestamp = Date.parse(event.disappearedAt);
+      if (cutoff24 && Number.isFinite(disappearedTimestamp) && disappearedTimestamp >= cutoff24) {
+        entry.resolved24 += 1;
+      }
+    });
+
+    return Array.from(statsMap.entries()).map(([source, entry]) => ({
+      source,
+      ...entry,
+      avgResolutionMinutes:
+        entry.resolutionCount > 0
+          ? Math.round(entry.resolutionTotalMinutes / entry.resolutionCount)
+          : 0
+    }));
+  }, [alerts, disappearedEvents, referenceTimestamp]);
+
   const avgResolutionMinutes = useMemo(() => {
-    const values = alerts
-      .map((alert) => {
-        const resolvedAt = alert.resolvedAt ?? alert.ackUpdatedAt;
-        if (!resolvedAt || alert.ackStatus !== "resolved") {
-          return null;
-        }
-        const durationMs = Date.parse(resolvedAt) - Date.parse(alert.timestamp);
-        if (!Number.isFinite(durationMs) || durationMs <= 0) {
-          return null;
-        }
-        return durationMs / 60000;
-      })
-      .filter((value): value is number => value !== null);
-    if (values.length === 0) {
+    const withResolution = sourceStats.filter((entry) => entry.resolutionCount > 0);
+    if (withResolution.length === 0) {
       return 0;
     }
-    return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
-  }, [alerts]);
+    const totalMinutes = withResolution.reduce((sum, entry) => sum + entry.resolutionTotalMinutes, 0);
+    const totalCount = withResolution.reduce((sum, entry) => sum + entry.resolutionCount, 0);
+    if (totalCount === 0) {
+      return 0;
+    }
+    return Math.round(totalMinutes / totalCount);
+  }, [sourceStats]);
 
-  const resolvedTodayCount = useMemo(() => {
-    if (!referenceTimestamp) {
-      return 0;
-    }
-    const cutoff = referenceTimestamp - 24 * 60 * 60 * 1000;
-    return alerts.filter((alert) => {
-      if (alert.ackStatus !== "resolved") {
-        return false;
-      }
-      const value = alert.resolvedAt ?? alert.ackUpdatedAt;
-      if (!value) {
-        return false;
-      }
-      const resolvedTimestamp = Date.parse(value);
-      return Number.isFinite(resolvedTimestamp) && resolvedTimestamp >= cutoff;
-    }).length;
-  }, [alerts, referenceTimestamp]);
+  const resolvedTodayCount = useMemo(
+    () => sourceStats.reduce((sum, source) => sum + source.resolved24, 0),
+    [sourceStats]
+  );
 
-  const systemLoad = useMemo(() => {
-    if (alerts.length === 0) {
-      return 0;
-    }
-    const weighted = criticalCount * 2 + warningCount;
-    return Math.max(1, Math.min(99, Math.round((weighted / (alerts.length * 2)) * 100)));
-  }, [alerts.length, criticalCount, warningCount]);
+  const totalResolutionCount = useMemo(
+    () => sourceStats.reduce((sum, source) => sum + source.resolutionCount, 0),
+    [sourceStats]
+  );
+
+  const alertPressure = useMemo(() => {
+    const raw = criticalCount * 18 + warningCount * 9 + Math.min(activeLastHour, 20) * 2;
+    return Math.max(0, Math.min(99, Math.round(raw)));
+  }, [activeLastHour, criticalCount, warningCount]);
 
   const notificationTitle = useMemo(() => {
     if (newAlertCount > 0) {
@@ -138,7 +201,7 @@ export default function DashboardHeader({
     {
       label: "Avg. Resolution",
       value: `${avgResolutionMinutes}m`,
-      meta: avgResolutionMinutes > 0 ? "from resolved incidents" : "no resolved incidents yet",
+      meta: totalResolutionCount > 0 ? `based on ${totalResolutionCount} resolved alerts` : "no resolved incidents yet",
       tone: "ok" as const,
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -148,9 +211,14 @@ export default function DashboardHeader({
       )
     },
     {
-      label: "System Load",
-      value: `${systemLoad}%`,
-      meta: criticalCount > 0 ? "elevated" : warningCount > 0 ? "moderate" : "stable",
+      label: "Alert Pressure",
+      value: `${alertPressure}%`,
+      meta:
+        criticalCount > 0
+          ? `${criticalCount} critical, ${warningCount} warning`
+          : warningCount > 0
+            ? `${warningCount} warning alerts active`
+            : "stable",
       tone: "warning" as const,
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -167,7 +235,7 @@ export default function DashboardHeader({
     {
       label: "Resolved 24h",
       value: resolvedTodayCount.toString(),
-      meta: "closed incidents recently",
+      meta: resolvedTodayCount > 0 ? "alerts disappeared in last 24h" : "no alerts disappeared recently",
       tone: "info" as const,
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -187,14 +255,12 @@ export default function DashboardHeader({
   return (
     <header className={styles.dashboardHeader}>
       <div className={styles.dashboardTopbar}>
-        <div className="min-w-0">
-          <div className={clsx(styles.dashboardTitleRow, "mt-0")}>
-            <FontAwesomeIcon icon={faGaugeHigh} className="h-5 w-5 shrink-0 text-accent" />
-            <h2 className={styles.dashboardTitle}>Monitoring Overview</h2>
-          </div>
+        <div className="flex items-center gap-3">
+          <FontAwesomeIcon icon={faGaugeHigh} className="h-5 w-5 shrink-0 text-accent" />
+          <h2 className="text-[2.2rem] font-semibold leading-none text-text">Dashboard</h2>
         </div>
         <div ref={notificationsRef} className="relative z-40">
-          <div className={styles.greetingPill}>
+          <div className="inline-flex items-center gap-2.5 rounded-full border border-border bg-surface/90 px-3.5 py-2 shadow-card">
             <button
               type="button"
               onClick={onToggleNotifications}
@@ -223,10 +289,12 @@ export default function DashboardHeader({
                 <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-rose-500" />
               ) : null}
             </button>
-            <span className="text-[11px] font-semibold uppercase tracking-[0.11em] text-[#25374c] dark:text-slate-200">
+            <span className="text-[11px] font-semibold uppercase tracking-[0.11em] text-text">
               Hello, {user.firstName}!
             </span>
-            <span className={styles.initialsChip}>{initials}</span>
+            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-[rgb(var(--base))]">
+              {initials}
+            </span>
           </div>
           <div
             className={clsx(

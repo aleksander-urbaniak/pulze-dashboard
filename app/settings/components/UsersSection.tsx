@@ -14,6 +14,7 @@ import {
   faXmark
 } from "@fortawesome/free-solid-svg-icons";
 
+import PageSectionHeader from "../../../components/PageSectionHeader";
 import type { User, UserRole } from "../../../lib/types";
 import {
   settingsFieldClass,
@@ -169,34 +170,26 @@ export default function UsersSection({
 
   if (!isAdmin) {
     return (
-      <section className="space-y-6 p-2 lg:p-0">
-        <div>
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <FontAwesomeIcon icon={faUsers} className="h-5 w-5 shrink-0 text-accent" />
-              <h2 className="text-[2.2rem] font-semibold leading-none text-text">Users & Groups</h2>
-            </div>
-            {headerRight}
-          </div>
-          <p className="mt-2 text-sm text-slate-500">Manage users, groups, and access roles.</p>
-        </div>
+      <section className="space-y-4">
+        <PageSectionHeader
+          icon={faUsers}
+          title="Users & Groups"
+          subtitle="Manage users, groups, and access roles."
+          right={headerRight}
+        />
         <p className="text-sm text-slate-500">Your role does not include user management.</p>
       </section>
     );
   }
 
   return (
-    <section className="space-y-6 p-2 lg:p-0">
-      <div>
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <FontAwesomeIcon icon={faUsers} className="h-5 w-5 shrink-0 text-accent" />
-            <h2 className="text-[2.2rem] font-semibold leading-none text-text">Users & Groups</h2>
-          </div>
-          {headerRight}
-        </div>
-        <p className="mt-2 text-sm text-slate-500">Manage users, groups, and access roles.</p>
-      </div>
+    <section className="space-y-4">
+      <PageSectionHeader
+        icon={faUsers}
+        title="Users & Groups"
+        subtitle="Manage users, groups, and access roles."
+        right={headerRight}
+      />
       {userStatus ? <p className="text-xs text-slate-400">{userStatus}</p> : null}
       {userUpdateStatus ? <p className="text-xs text-slate-400">{userUpdateStatus}</p> : null}
 
@@ -225,9 +218,16 @@ export default function UsersSection({
             const editing = editingUserId === u.id;
             return (
               <div key={u.id} className="grid grid-cols-[minmax(320px,1fr)_170px_210px_220px] items-center px-5 py-4 md:px-6">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#1f3b84]/65 text-accent"><FontAwesomeIcon icon={faShieldHalved} className="h-3.5 w-3.5" /></div>
-                  <div className="min-w-0"><p className="truncate text-lg font-semibold text-text leading-tight">{u.firstName} {u.lastName}</p><p className="truncate text-sm text-muted">@{u.username}</p></div>
+                <div className="grid min-w-0 grid-cols-[36px_minmax(0,1fr)] items-center gap-x-2">
+                  <div className="relative h-9 w-9">
+                    <div className="radius-pill flex h-9 w-9 items-center justify-center overflow-hidden border border-[#2a4269] bg-base/35 text-[11px] font-bold shadow-[0_0_0_1px_rgb(8_23_42)]">
+                      <FontAwesomeIcon icon={faShieldHalved} className="h-3.5 w-3.5 text-accent" />
+                    </div>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="truncate text-[1rem] font-semibold leading-tight text-text">{u.firstName} {u.lastName}</div>
+                    <div className="truncate text-[11px] leading-tight text-muted">@{u.username}</div>
+                  </div>
                 </div>
                 <div className="flex items-center justify-center border-l border-[#1d2f4c]">
                   <span className="inline-flex w-fit rounded-lg bg-[#17316e] px-3 py-1 text-sm font-semibold text-[#E8EFFB]">{u.role}</span>
@@ -324,7 +324,9 @@ export default function UsersSection({
                   <span className="text-lg text-slate-200">{groupMembers.get(g.id) ?? 0}</span>
                 </div>
                 <div className="flex items-center justify-center border-l border-[#1d2f4c]">
-                  <span className="text-lg text-slate-300">{g.defaultRole}</span>
+                  <span className="inline-flex w-fit rounded-lg bg-[#17316e] px-3 py-1 text-sm font-semibold text-[#E8EFFB]">
+                    {g.defaultRole}
+                  </span>
                 </div>
                 <div className="flex items-center justify-center gap-2 border-l border-[#1d2f4c]">
                   {editing ? (

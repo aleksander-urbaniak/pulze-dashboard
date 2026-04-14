@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -74,11 +74,14 @@ export default function ProfileEditorModal({
   onConfirmTwoFactorSetup,
   onDisableTwoFactor
 }: ProfileEditorModalProps) {
+  const defaultTwoFactorHint = "Add the key to your authenticator app, then enter a code.";
   const [isTwoFactorPopupOpen, setIsTwoFactorPopupOpen] = useState(false);
   const [isPasswordPopupOpen, setIsPasswordPopupOpen] = useState(false);
   const [newPasswordDraft, setNewPasswordDraft] = useState("");
   const [confirmPasswordDraft, setConfirmPasswordDraft] = useState("");
   const [passwordPopupStatus, setPasswordPopupStatus] = useState<string | null>(null);
+  const [manualKeyCopied, setManualKeyCopied] = useState(false);
+  const previousTwoFactorEnabledRef = useRef(twoFactorEnabled);
 
   useEffect(() => {
     if (!isOpen) {
@@ -87,8 +90,19 @@ export default function ProfileEditorModal({
       setNewPasswordDraft("");
       setConfirmPasswordDraft("");
       setPasswordPopupStatus(null);
+      setManualKeyCopied(false);
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    const previous = previousTwoFactorEnabledRef.current;
+    if (isTwoFactorPopupOpen && !previous && twoFactorEnabled) {
+      setIsTwoFactorPopupOpen(false);
+      setTwoFactorCode("");
+      setManualKeyCopied(false);
+    }
+    previousTwoFactorEnabledRef.current = twoFactorEnabled;
+  }, [isTwoFactorPopupOpen, setTwoFactorCode, twoFactorEnabled]);
 
   const otpUri = useMemo(() => {
     if (!twoFactorSetupSecret) {
@@ -102,8 +116,22 @@ export default function ProfileEditorModal({
 
   const openTwoFactorPopup = () => {
     setIsTwoFactorPopupOpen(true);
+    setManualKeyCopied(false);
     if (!twoFactorEnabled && !twoFactorSetupSecret) {
       onStartTwoFactorSetup();
+    }
+  };
+
+  const copyManualKey = async () => {
+    if (!twoFactorSetupSecret || typeof navigator === "undefined") {
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(twoFactorSetupSecret);
+      setManualKeyCopied(true);
+      window.setTimeout(() => setManualKeyCopied(false), 1200);
+    } catch {
+      setManualKeyCopied(false);
     }
   };
 
@@ -276,69 +304,129 @@ export default function ProfileEditorModal({
 
         {isTwoFactorPopupOpen ? (
           <div className="absolute inset-0 z-[130] flex items-center justify-center bg-[#020a16]/65 p-4 backdrop-blur-sm">
-            <div className="w-full max-w-2xl rounded-xl border border-[#1d2f4c] bg-[#07101f] p-4 shadow-[0_24px_50px_-28px_rgba(0,0,0,0.95)]">
+            <div className="w-full max-w-lg max-h-[68vh] overflow-y-auto rounded-xl border border-[#1d2f4c] bg-[#07101f] p-3 shadow-[0_24px_50px_-28px_rgba(0,0,0,0.95)]">
               <div className="flex items-start justify-between gap-3">
-                <h5 className="text-4xl font-semibold text-white">
+                <h5 className="text-xl font-semibold text-white">
                   {twoFactorEnabled ? "Disable 2FA" : "Enable 2FA"}
                 </h5>
                 <button
                   type="button"
-                  onClick={() => setIsTwoFactorPopupOpen(false)}
+                  onClick={() => {
+                    setManualKeyCopied(false);
+                    setIsTwoFactorPopupOpen(false);
+                  }}
                   className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#22395c] bg-[#091425] text-slate-400 transition hover:border-accent/35 hover:text-accent"
                 >
                   <FontAwesomeIcon icon={faXmark} className="h-4 w-4" />
                 </button>
               </div>
 
-              <div
-                className={clsx(
-                  "mt-4 grid gap-4",
-                  twoFactorSetupSecret && !twoFactorEnabled ? "md:grid-cols-[minmax(0,1fr)_180px]" : ""
-                )}
-              >
-                <div className="space-y-3">
-                  {twoFactorSetupSecret && !twoFactorEnabled ? (
-                    <p className="text-2xl font-medium leading-tight text-slate-200">
-                      Scan the code with your authenticator app or enter{" "}
-                      <span className="text-accent">{twoFactorSetupSecret}</span> manually.
-                    </p>
-                  ) : (
-                    <p className="text-2xl font-medium leading-tight text-slate-200">
-                      Enter your 2FA code to {twoFactorEnabled ? "disable" : "enable"} authentication.
-                    </p>
-                  )}
-
+              {twoFactorEnabled ? (
+                <div className="mt-2.5 space-y-2.5">
+                  <p className="text-sm text-slate-300">
+                    Enter your 2FA code to disable two-factor authentication.
+                  </p>
                   <div className="flex flex-wrap gap-2">
                     <input
                       value={twoFactorCode}
                       onChange={(event) => setTwoFactorCode(event.target.value)}
                       placeholder="Enter 2FA code"
-                      className={clsx(settingsFieldClass, "h-12 min-w-[220px] flex-1")}
+                      className={clsx(settingsFieldClass, "h-11 min-w-[220px] flex-1")}
                     />
                     <button
                       type="button"
-                      onClick={twoFactorEnabled ? onDisableTwoFactor : onConfirmTwoFactorSetup}
-                      className="h-12 rounded-xl bg-[#1a2a61] px-6 text-lg font-semibold text-white transition hover:brightness-110"
+                      onClick={onDisableTwoFactor}
+                      disabled={!twoFactorCode.trim()}
+                      className={clsx(settingsPrimaryButton, "h-11 px-5 disabled:opacity-60")}
                     >
-                      {twoFactorEnabled ? "Disable" : "Enable"}
+                      Disable
+                    </button>
+                  </div>
+                  {twoFactorStatus ? <p className="text-sm text-slate-400">{twoFactorStatus}</p> : null}
+                </div>
+              ) : (
+                <div className="mt-2.5 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-500/30 text-sm font-semibold text-indigo-200">
+                      1
+                    </span>
+                    <p className="text-base font-semibold uppercase tracking-[0.08em] text-slate-100">Scan QR Code</p>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-[130px_minmax(0,1fr)]">
+                    {twoFactorSetupSecret && otpUri ? (
+                      <div className="w-fit overflow-hidden rounded-xl border border-white/20 bg-white p-2">
+                        <img
+                          src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(otpUri)}`}
+                          alt="2FA QR Code"
+                          className="h-[108px] w-[108px]"
+                        />
+                      </div>
+                    ) : null}
+                    <p className="max-w-md text-sm leading-relaxed text-slate-300">
+                      Open your authenticator app and scan this image to link your account instantly.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-500/20 text-sm font-semibold text-indigo-200">
+                        2
+                      </span>
+                      <p className="text-base font-semibold uppercase tracking-[0.08em] text-slate-100">Manual Entry</p>
+                    </div>
+                    <span className="rounded-full bg-slate-700/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                      Optional
+                    </span>
+                  </div>
+
+                  <div className="rounded-2xl border border-[#1d2f4c] bg-[#081427] p-3">
+                    <p className="mb-2 text-xs text-slate-400">
+                      Use this key if you&apos;re unable to scan the QR code.
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[#22395c] bg-[#091425] p-2">
+                        <p className="min-w-0 flex-1 break-all font-mono text-[13px] text-accent">
+                          {twoFactorSetupSecret ?? "Loading key..."}
+                        </p>
+                      <button
+                        type="button"
+                        onClick={copyManualKey}
+                        className={clsx(settingsMutedButton, "px-3 py-1.5 text-[10px]")}
+                      >
+                        {manualKeyCopied ? "Copied" : "Copy"}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-500/30 text-sm font-semibold text-indigo-200">
+                      3
+                    </span>
+                      <p className="text-base font-semibold uppercase tracking-[0.08em] text-slate-100">Verify Code</p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <input
+                      value={twoFactorCode}
+                      onChange={(event) => setTwoFactorCode(event.target.value)}
+                      placeholder="000 000"
+                      className={clsx(settingsFieldClass, "h-11 min-w-[220px] flex-1")}
+                    />
+                    <button
+                      type="button"
+                      onClick={onConfirmTwoFactorSetup}
+                      disabled={!twoFactorCode.trim()}
+                      className={clsx(settingsPrimaryButton, "h-11 px-5 disabled:opacity-60")}
+                    >
+                      Enable
                     </button>
                   </div>
 
-                  {twoFactorStatus ? <p className="text-sm text-slate-400">{twoFactorStatus}</p> : null}
+                  {twoFactorStatus && twoFactorStatus !== defaultTwoFactorHint ? (
+                    <p className="text-sm text-slate-400">{twoFactorStatus}</p>
+                  ) : null}
                 </div>
-
-                {twoFactorSetupSecret && !twoFactorEnabled && otpUri ? (
-                  <div className="flex items-start justify-center md:justify-end">
-                    <div className="overflow-hidden rounded-xl border border-white/20 bg-white p-2">
-                      <img
-                        src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(otpUri)}`}
-                        alt="2FA QR Code"
-                        className="h-[164px] w-[164px]"
-                      />
-                    </div>
-                  </div>
-                ) : null}
-              </div>
+              )}
             </div>
           </div>
         ) : null}

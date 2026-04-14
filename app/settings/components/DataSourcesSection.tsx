@@ -3,6 +3,7 @@ import { useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faDatabase, faTrashCan } from "@fortawesome/free-solid-svg-icons";
 
+import PageSectionHeader from "../../../components/PageSectionHeader";
 import type { KumaSource, PrometheusSource, Settings, ZabbixSource } from "../../../lib/types";
 import type { TestState } from "../types";
 import {
@@ -10,6 +11,7 @@ import {
   settingsLabelClass,
   settingsPanelCard,
   settingsShellCard,
+  settingsMutedButton,
   settingsPrimaryButton
 } from "./theme";
 
@@ -312,19 +314,13 @@ export default function DataSourcesSection({
   };
 
   return (
-    <section className="space-y-6 p-2 lg:p-0">
-      <div className="mb-6">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <FontAwesomeIcon icon={faDatabase} className="h-5 w-5 shrink-0 text-accent" />
-            <h2 className="text-[2.2rem] font-semibold leading-none text-text">Connections</h2>
-          </div>
-          {headerRight}
-        </div>
-        <p className="mt-2 text-sm text-slate-500">
-          Configure endpoints, auth, and validation using the shared Pulze settings style.
-        </p>
-      </div>
+    <section className="space-y-4">
+      <PageSectionHeader
+        icon={faDatabase}
+        title="Data Sources"
+        subtitle="Configure endpoints, auth, and validation using the shared Pulze settings style."
+        right={headerRight}
+      />
 
       <div className="grid items-stretch gap-6 lg:grid-cols-[300px_minmax(0,1fr)]">
         <div className="flex flex-col">
@@ -563,7 +559,7 @@ export default function DataSourcesSection({
                         type="button"
                         onClick={() => testSource(selectedEntry.kind, selectedEntry.data)}
                         disabled={!canEditSettings || !sourceUrl(selectedEntry)}
-                        className="rounded-xl border border-[#22395c] bg-[#091425] px-4 py-2 text-[10px] font-bold uppercase tracking-[0.15em] text-slate-200 transition hover:border-accent/35 hover:bg-[#0c1a30] hover:text-accent"
+                        className={settingsMutedButton}
                       >
                         Test Connection
                       </button>
@@ -636,7 +632,7 @@ export default function DataSourcesSection({
                 type="button"
                 onClick={closeWizard}
                 disabled={wizardBusy}
-                className="rounded-lg border border-[#22395c] bg-[#091425] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[0.15em] text-slate-300 transition hover:border-accent/35 hover:text-accent disabled:opacity-50"
+                className={clsx(settingsMutedButton, "disabled:opacity-50")}
               >
                 Close
               </button>
@@ -840,7 +836,7 @@ export default function DataSourcesSection({
                         type="button"
                         onClick={runWizardTest}
                         disabled={wizardBusy || wizardSourceUrl.trim().length === 0}
-                        className="rounded-xl border border-[#22395c] bg-[#091425] px-4 py-2 text-[10px] font-bold uppercase tracking-[0.15em] text-slate-200 transition hover:border-accent/35 hover:bg-[#0c1a30] hover:text-accent disabled:opacity-50"
+                        className={clsx(settingsMutedButton, "disabled:opacity-50")}
                       >
                         {wizardBusy ? "Testing..." : "Test Connection"}
                       </button>
@@ -877,7 +873,7 @@ export default function DataSourcesSection({
                 type="button"
                 onClick={closeWizard}
                 disabled={wizardBusy}
-                className="rounded-xl border border-[#22395c] bg-[#091425] px-4 py-2 text-[10px] font-bold uppercase tracking-[0.15em] text-slate-200 transition hover:border-accent/35 hover:text-accent disabled:opacity-50"
+                className={clsx(settingsMutedButton, "disabled:opacity-50")}
               >
                 Cancel
               </button>
@@ -894,7 +890,7 @@ export default function DataSourcesSection({
                       setWizardStep(1);
                     }}
                     disabled={wizardBusy}
-                    className="rounded-xl border border-[#22395c] bg-[#091425] px-4 py-2 text-[10px] font-bold uppercase tracking-[0.15em] text-slate-200 transition hover:border-accent/35 hover:text-accent disabled:opacity-50"
+                    className={clsx(settingsMutedButton, "disabled:opacity-50")}
                   >
                     Back
                   </button>

@@ -2,7 +2,7 @@
 @reference "tailwindcss";
 
 .dashboardHeader {
-  @apply border-b border-[#152642] px-0 pb-4 pt-3;
+  @apply border-b border-[#152642] px-0 pb-4 pt-0;
 }
 
 .dashboardTopbar {
