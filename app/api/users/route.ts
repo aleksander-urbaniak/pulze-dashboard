@@ -5,6 +5,7 @@ export const dynamic = "force-dynamic"
 
 import {
   createUser,
+  deleteUser,
   getUserById,
   getUserByUsername,
   listUsers,
@@ -125,5 +126,37 @@ export async function PATCH(request: Request) {
   });
 
   return NextResponse.json({ user: toPublicUser(updated) });
+}
+
+export async function DELETE(request: Request) {
+  const permission = await requirePermission("users.manage");
+  if (permission.response) {
+    return permission.response;
+  }
+  const actor = permission.user;
+
+  const payload = (await request.json()) as { id?: string };
+  const targetId = payload.id?.trim();
+  if (!targetId) {
+    return NextResponse.json({ error: "User id is required" }, { status: 400 });
+  }
+
+  if (targetId === actor.id) {
+    return NextResponse.json({ error: "You cannot delete your own account." }, { status: 400 });
+  }
+
+  const existing = getUserById(targetId);
+  if (!existing) {
+    return NextResponse.json({ error: "User not found" }, { status: 404 });
+  }
+
+  deleteUser(targetId);
+  logAudit("users.delete", actor.id, {
+    userId: existing.id,
+    username: existing.username,
+    role: existing.role
+  });
+
+  return NextResponse.json({ ok: true });
 }
 

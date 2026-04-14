@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useTheme } from "next-themes";
 
 import Sidebar from "../../components/Sidebar";
+import UserGreetingPill from "../../components/UserGreetingPill";
 import { applyAppearanceToDocument, defaultAppearance } from "../../lib/appearance";
 import type {
   AuthProvidersSettings,
@@ -23,6 +24,7 @@ import AppearanceSection from "./components/AppearanceSection";
 import AuditSection from "./components/AuditSection";
 import UsersSection from "./components/UsersSection";
 import AuthProvidersSection from "./components/AuthProvidersSection";
+import ProfileEditorModal from "./components/ProfileEditorModal";
 
 const emptySettings: Settings = {
   prometheusSources: [],
@@ -110,6 +112,7 @@ function createKumaSource(): KumaSource {
 
 export default function SettingsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { setTheme } = useTheme();
   const [user, setUser] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>("data");
@@ -142,6 +145,7 @@ export default function SettingsPage() {
   const [auditPageSize, setAuditPageSize] = useState(25);
   const [auditStatus, setAuditStatus] = useState<string | null>(null);
   const [isLoadingAudit, setIsLoadingAudit] = useState(false);
+  const [isProfileEditorOpen, setIsProfileEditorOpen] = useState(false);
   const [newUser, setNewUser] = useState({
     username: "",
     firstName: "",
@@ -189,13 +193,34 @@ export default function SettingsPage() {
   }, [canConfigureAuth, canReadAudit, canViewSettings]);
 
   useEffect(() => {
+    const requestedTab = searchParams.get("tab") as TabKey | null;
+    if (requestedTab && settingsTabItems.some((entry) => entry.value === requestedTab)) {
+      setActiveTab(requestedTab);
+    }
+  }, [searchParams, settingsTabItems]);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
     if (settingsTabItems.length === 0) {
       return;
     }
     if (!settingsTabItems.some((entry) => entry.value === activeTab)) {
       setActiveTab(settingsTabItems[0].value);
     }
-  }, [activeTab, settingsTabItems]);
+  }, [activeTab, settingsTabItems, user]);
+
+  useEffect(() => {
+    if (settingsTabItems.length === 0) {
+      return;
+    }
+    const currentTab = searchParams.get("tab");
+    if (currentTab === activeTab) {
+      return;
+    }
+    router.replace(`/settings?tab=${activeTab}`, { scroll: false });
+  }, [activeTab, router, searchParams, settingsTabItems]);
 
   useEffect(() => {
     if (settingsDraft.appearance) {
@@ -348,15 +373,19 @@ export default function SettingsPage() {
     setIsLoadingAudit(false);
   }
 
-  async function createNewUser() {
+  async function createNewUser(overrides?: Partial<typeof newUser>) {
     if (!canManageUsers) {
       return;
     }
     setUserStatus(null);
+    const payload = {
+      ...newUser,
+      ...(overrides ?? {})
+    };
     const response = await fetch("/api/users", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(newUser)
+      body: JSON.stringify(payload)
     });
     if (!response.ok) {
       const data = await response.json();
@@ -409,6 +438,25 @@ export default function SettingsPage() {
     await loadUsers(entry.id);
   }
 
+  async function deleteUserById(id: string) {
+    if (!canManageUsers) {
+      return;
+    }
+    setUserUpdateStatus(null);
+    const response = await fetch("/api/users", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id })
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      setUserUpdateStatus(data.error ?? "Failed to delete user");
+      return;
+    }
+    setUserUpdateStatus("User deleted.");
+    await loadUsers();
+  }
+
   function updatePrometheusSource(id: string, updates: Partial<PrometheusSource>) {
     setSettingsDraft((prev) => ({
       ...prev,
@@ -453,7 +501,7 @@ export default function SettingsPage() {
     }));
   }
 
-  function updateBackground(key: "gradient" | "glow" | "noise", value: number) {
+  function updateBackground(key: "gradient" | "glow" | "noise" | "radius", value: number) {
     const safeValue = Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0;
     setSettingsDraft((prev) => ({
       ...prev,
@@ -634,16 +682,19 @@ export default function SettingsPage() {
       <Sidebar
         user={user}
         onLogout={handleLogout}
+        onOpenProfileEditor={() => setIsProfileEditorOpen(true)}
         settingsTabs={{
           items: settingsTabItems,
           active: activeTab,
           onChange: (value) => setActiveTab(value as TabKey)
         }}
       />
-      <div className="flex-1 min-w-0">
-        <main className="mx-auto max-w-6xl px-5 py-8 sm:px-6 sm:py-10">
+      <div className="flex-1 min-w-0 border-l border-[rgb(var(--app-divider)/0.82)] bg-[rgb(var(--app-main-bg))]">
+        <main className="w-full px-5 py-8 sm:px-6 sm:py-10 lg:px-8">
+          <div className="mx-auto w-full max-w-[1520px]">
           {activeTab === "data" && canViewSettings ? (
             <DataSourcesSection
+              headerRight={<UserGreetingPill user={user} />}
               settingsDraft={settingsDraft}
               setSettingsDraft={setSettingsDraft}
               canEditSettings={canEditSettings}
@@ -664,6 +715,7 @@ export default function SettingsPage() {
 
           {activeTab === "appearance" && canViewSettings ? (
             <AppearanceSection
+              headerRight={<UserGreetingPill user={user} />}
               settingsDraft={settingsDraft}
               setSettingsDraft={setSettingsDraft}
               canEditSettings={canEditSettings}
@@ -680,6 +732,7 @@ export default function SettingsPage() {
 
           {activeTab === "audit" && canReadAudit ? (
             <AuditSection
+              headerRight={<UserGreetingPill user={user} />}
               auditLogs={auditLogs}
               auditStatus={auditStatus}
               isLoadingAudit={isLoadingAudit}
@@ -702,6 +755,7 @@ export default function SettingsPage() {
 
           {activeTab === "access" && canConfigureAuth ? (
             <AuthProvidersSection
+              headerRight={<UserGreetingPill user={user} />}
               authDraft={authDraft}
               setAuthDraft={setAuthDraft}
               authStatus={authStatus}
@@ -711,19 +765,8 @@ export default function SettingsPage() {
 
           {activeTab === "users" ? (
             <UsersSection
+              headerRight={<UserGreetingPill user={user} />}
               isAdmin={canManageUsers}
-              profileDraft={profileDraft}
-              setProfileDraft={setProfileDraft}
-              profileStatus={profileStatus}
-              onSaveProfile={saveProfile}
-              twoFactorEnabled={Boolean(user.twoFactorEnabled)}
-              twoFactorStatus={twoFactorStatus}
-              twoFactorCode={twoFactorCode}
-              setTwoFactorCode={setTwoFactorCode}
-              twoFactorSetupSecret={twoFactorSetupSecret}
-              onStartTwoFactorSetup={startTwoFactorSetup}
-              onConfirmTwoFactorSetup={confirmTwoFactorSetup}
-              onDisableTwoFactor={disableTwoFactorForProfile}
               newUser={newUser}
               setNewUser={setNewUser}
               onCreateUser={createNewUser}
@@ -736,11 +779,30 @@ export default function SettingsPage() {
               userPasswordDrafts={userPasswordDrafts}
               setUserPasswordDrafts={setUserPasswordDrafts}
               onSaveUserDetails={saveUserDetails}
-              onResetUser={(id) => void loadUsers(id)}
+              onResetUser={() => void loadUsers()}
+              onDeleteUser={deleteUserById}
             />
           ) : null}
+          </div>
         </main>
       </div>
+
+      <ProfileEditorModal
+        isOpen={isProfileEditorOpen}
+        onClose={() => setIsProfileEditorOpen(false)}
+        profileDraft={profileDraft}
+        setProfileDraft={setProfileDraft}
+        profileStatus={profileStatus}
+        onSaveProfile={saveProfile}
+        twoFactorEnabled={Boolean(user.twoFactorEnabled)}
+        twoFactorStatus={twoFactorStatus}
+        twoFactorCode={twoFactorCode}
+        setTwoFactorCode={setTwoFactorCode}
+        twoFactorSetupSecret={twoFactorSetupSecret}
+        onStartTwoFactorSetup={startTwoFactorSetup}
+        onConfirmTwoFactorSetup={confirmTwoFactorSetup}
+        onDisableTwoFactor={disableTwoFactorForProfile}
+      />
     </div>
   );
 }

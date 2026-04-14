@@ -1,7 +1,20 @@
+import { useMemo, useState } from "react";
+import clsx from "clsx";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faFilter, faUser, faBoxArchive, faShieldHalved } from "@fortawesome/free-solid-svg-icons";
+
 import FilterSelect from "../../../components/FilterSelect";
 import type { AuditLogEntry } from "../types";
+import {
+  settingsFieldClass,
+  settingsLabelClass,
+  settingsMutedButton,
+  settingsPanelCard,
+  settingsShellCard
+} from "./theme";
 
 type AuditSectionProps = {
+  headerRight?: React.ReactNode;
   auditLogs: AuditLogEntry[];
   auditStatus: string | null;
   isLoadingAudit: boolean;
@@ -16,7 +29,21 @@ type AuditSectionProps = {
   formatAuditDetails: (details: string) => string;
 };
 
+function formatAction(action: string) {
+  return action.replace(/\./g, " - ").toUpperCase();
+}
+
+function resourceFromAction(action: string) {
+  if (action.startsWith("users.")) return "users";
+  if (action.startsWith("settings.")) return "settings";
+  if (action.startsWith("auth.")) return "authentication";
+  if (action.startsWith("sources.")) return "data-source";
+  if (action.startsWith("audit.")) return "audit";
+  return action.split(".")[0] || "system";
+}
+
 export default function AuditSection({
+  headerRight,
   auditLogs,
   auditStatus,
   isLoadingAudit,
@@ -30,116 +57,222 @@ export default function AuditSection({
   onRefresh,
   formatAuditDetails
 }: AuditSectionProps) {
+  const [actionFilter, setActionFilter] = useState("all");
+  const [resourceFilter, setResourceFilter] = useState("all");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+
   const pageOptions = [10, 25, 50, 100].map((value) => ({
     value: String(value),
     label: `${value}/page`
   }));
 
+  const actionOptions = useMemo(() => {
+    const values = Array.from(new Set(auditLogs.map((entry) => entry.action)));
+    return [{ value: "all", label: "All Actions" }, ...values.map((value) => ({ value, label: value }))];
+  }, [auditLogs]);
+
+  const resourceOptions = useMemo(() => {
+    const values = Array.from(new Set(auditLogs.map((entry) => resourceFromAction(entry.action))));
+    return [{ value: "all", label: "All Resources" }, ...values.map((value) => ({ value, label: value }))];
+  }, [auditLogs]);
+
+  const filteredLogs = useMemo(() => {
+    return auditLogs.filter((entry) => {
+      if (actionFilter !== "all" && entry.action !== actionFilter) return false;
+      const resource = resourceFromAction(entry.action);
+      if (resourceFilter !== "all" && resource !== resourceFilter) return false;
+      const createdAt = new Date(entry.createdAt);
+      if (startDate) {
+        const start = new Date(`${startDate}T00:00:00`);
+        if (createdAt < start) return false;
+      }
+      if (endDate) {
+        const end = new Date(`${endDate}T23:59:59`);
+        if (createdAt > end) return false;
+      }
+      return true;
+    });
+  }, [actionFilter, auditLogs, endDate, resourceFilter, startDate]);
+
   return (
-    <section className="space-y-6">
-      <div className="rounded-3xl border border-border bg-surface/90 p-4 shadow-card backdrop-blur sm:p-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-xs uppercase tracking-[0.3em] text-muted">Audit Log</p>
-            <h2 className="text-2xl font-semibold">System activity</h2>
+    <section className="space-y-5 p-2 lg:p-0">
+      <div>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <FontAwesomeIcon icon={faShieldHalved} className="h-5 w-5 shrink-0 text-accent" />
+            <h2 className="text-[2.2rem] font-semibold leading-none text-text">Audit Logs</h2>
+          </div>
+          {headerRight}
+        </div>
+        <p className="mt-2 text-sm text-slate-500">Track and monitor all activities across your infrastructure.</p>
+      </div>
+
+      <div className={clsx(settingsPanelCard, "p-4")}>
+        <div className="mb-4 flex items-center justify-between">
+          <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-300">
+            <FontAwesomeIcon icon={faFilter} className="h-3.5 w-3.5 text-accent" />
+            Filters
           </div>
           <button
             type="button"
-            onClick={onRefresh}
-            className="rounded-full border border-border px-4 py-2 text-xs uppercase tracking-[0.2em]"
+            onClick={() => {
+              setActionFilter("all");
+              setResourceFilter("all");
+              setStartDate("");
+              setEndDate("");
+            }}
+            className={settingsMutedButton}
           >
-            Refresh
+            Clear All
           </button>
         </div>
-        {auditStatus ? <p className="mt-3 text-sm text-muted">{auditStatus}</p> : null}
-        {auditLogs.length > 0 ? (
-          <div className="mt-4 flex flex-wrap items-center justify-end gap-3 text-xs uppercase tracking-[0.2em] text-muted">
-            <FilterSelect
-              value={String(auditPageSize)}
-              onChange={(value) => {
-                const nextValue = Number(value);
-                if (!Number.isFinite(nextValue)) {
-                  return;
-                }
-                onPageSizeChange(nextValue);
-              }}
-              options={pageOptions}
-              ariaLabel="Audit log page size"
-              className="rounded-full border border-border bg-base/60 px-3 py-1 text-xs uppercase tracking-[0.2em]"
-              optionClassName="text-xs uppercase tracking-[0.2em]"
+
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_180px]">
+          <FilterSelect
+            value={actionFilter}
+            onChange={setActionFilter}
+            options={actionOptions}
+            ariaLabel="Action filter"
+            className="h-12 w-full rounded-xl border border-[#22395c] bg-[#091425] px-3 text-sm text-slate-100"
+            optionClassName="text-sm"
+          />
+          <FilterSelect
+            value={resourceFilter}
+            onChange={setResourceFilter}
+            options={resourceOptions}
+            ariaLabel="Resource filter"
+            className="h-12 w-full rounded-xl border border-[#22395c] bg-[#091425] px-3 text-sm text-slate-100"
+            optionClassName="text-sm"
+          />
+          <FilterSelect
+            value={String(auditPageSize)}
+            onChange={(value) => onPageSizeChange(Number(value))}
+            options={pageOptions}
+            ariaLabel="Audit page size"
+            className="h-12 w-full rounded-xl border border-[#22395c] bg-[#091425] px-3 text-sm text-slate-100"
+            optionClassName="text-sm"
+          />
+        </div>
+        <div className="mt-3 grid gap-3 md:grid-cols-2">
+          <label className="space-y-2">
+            <span className={settingsLabelClass}>Start Date</span>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(event) => setStartDate(event.target.value)}
+              className={settingsFieldClass}
             />
-          </div>
-        ) : null}
+          </label>
+          <label className="space-y-2">
+            <span className={settingsLabelClass}>End Date</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(event) => setEndDate(event.target.value)}
+              className={settingsFieldClass}
+            />
+          </label>
+        </div>
+      </div>
+
+      {auditStatus ? <p className="text-sm text-slate-400">{auditStatus}</p> : null}
+
+      <div className={clsx(settingsShellCard, "overflow-hidden")}>
         {isLoadingAudit ? (
-          <p className="mt-4 text-sm text-muted">Loading audit log...</p>
-        ) : auditLogs.length === 0 ? (
-          <p className="mt-4 text-sm text-muted">No activity recorded yet.</p>
+          <p className="px-6 py-8 text-sm text-slate-500">Loading audit log...</p>
+        ) : filteredLogs.length === 0 ? (
+          <p className="px-6 py-8 text-sm text-slate-500">No activity recorded yet.</p>
         ) : (
-          <div className="mt-4 overflow-x-auto rounded-2xl border border-border">
-            <table className="w-full text-sm">
-              <thead className="bg-base/60 text-xs uppercase tracking-[0.2em] text-muted">
-                <tr>
-                  <th className="px-4 py-3 text-left">Action</th>
-                  <th className="px-4 py-3 text-left">Actor</th>
-                  <th className="px-4 py-3 text-left">Details</th>
-                  <th className="px-4 py-3 text-left">Time</th>
-                </tr>
-              </thead>
-              <tbody>
-                {auditLogs.map((log) => (
-                  <tr key={log.id} className="border-t border-border bg-base/40">
-                    <td className="px-4 py-3 font-semibold">{log.action}</td>
-                    <td className="px-4 py-3 text-muted">
-                      {log.userName ?? "System"}
-                      {log.userEmail ? ` (${log.userEmail})` : ""}
+          <table className="w-full text-left">
+            <thead className="border-b border-[#1d2f4c] bg-[#0b1424]">
+              <tr>
+                <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500">
+                  Timestamp
+                </th>
+                <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500">
+                  Action
+                </th>
+                <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500">
+                  Actor
+                </th>
+                <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500">
+                  Resource
+                </th>
+                <th className="px-4 py-3 text-right text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500">
+                  Details
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredLogs.map((log) => {
+                const resource = resourceFromAction(log.action);
+                return (
+                  <tr key={log.id} className="border-t border-[#1d2f4c]">
+                    <td className="px-4 py-3 text-sm text-slate-300">{new Date(log.createdAt).toLocaleString()}</td>
+                    <td className="px-4 py-3">
+                      <span className="inline-flex rounded-lg border border-[#2c3d5a] bg-[#162336] px-2 py-1 text-[11px] font-semibold text-slate-200">
+                        {formatAction(log.action)}
+                      </span>
                     </td>
-                    <td className="px-4 py-3 text-xs text-muted">
-                      <pre className="whitespace-pre-wrap font-sans">
-                        {formatAuditDetails(log.details)}
-                      </pre>
+                    <td className="px-4 py-3">
+                      <div className="inline-flex items-center gap-2 text-sm text-slate-300">
+                        <FontAwesomeIcon icon={faUser} className="h-3.5 w-3.5 text-slate-500" />
+                        {log.userName ?? "System"}
+                      </div>
                     </td>
-                    <td className="px-4 py-3 text-muted">
-                      {new Date(log.createdAt).toLocaleString()}
+                    <td className="px-4 py-3">
+                      <span className="inline-flex items-center gap-1.5 rounded-lg border border-[#2c3d5a] bg-[#101c30] px-2 py-1 text-[11px] font-semibold text-slate-200">
+                        <FontAwesomeIcon icon={faBoxArchive} className="h-3 w-3 text-slate-400" />
+                        {resource}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span className="inline-flex max-w-[320px] items-center justify-end text-xs text-slate-400" title={formatAuditDetails(log.details)}>
+                        <span className="truncate">{formatAuditDetails(log.details)}</span>
+                      </span>
                     </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                );
+              })}
+            </tbody>
+          </table>
         )}
-        {auditLogs.length > 0 ? (
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-xs uppercase tracking-[0.2em] text-muted">
-            <span>
-              {auditTotal === 0
-                ? "Showing 0"
-                : `Showing ${(auditPage - 1) * auditPageSize + 1}-${Math.min(
-                    auditPage * auditPageSize,
-                    auditTotal
-                  )} of ${auditTotal}`}
+
+        <div className="flex items-center justify-between border-t border-[#1d2f4c] bg-white/[0.04] px-4 py-3 text-sm text-slate-400">
+          <span>
+            {auditTotal === 0
+              ? "Showing 0 to 0 of 0"
+              : `Showing ${(auditPage - 1) * auditPageSize + 1} to ${Math.min(
+                  auditPage * auditPageSize,
+                  auditTotal
+                )} of ${auditTotal}`}
+          </span>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={onRefresh} className={settingsMutedButton}>
+              Refresh
+            </button>
+            <button
+              type="button"
+              onClick={onPrevPage}
+              disabled={auditPage <= 1}
+              className={clsx(settingsMutedButton, "disabled:opacity-50")}
+            >
+              Previous
+            </button>
+            <span className="rounded-xl bg-[#091425] px-3 py-2 text-[11px] font-bold text-slate-200">
+              Page {auditPage} of {auditPageCount}
             </span>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={onPrevPage}
-                disabled={auditPage <= 1}
-                className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em] disabled:opacity-50"
-              >
-                Prev
-              </button>
-              <span>
-                Page {auditPage} / {auditPageCount}
-              </span>
-              <button
-                type="button"
-                onClick={onNextPage}
-                disabled={auditPage >= auditPageCount}
-                className="rounded-full border border-border px-3 py-1 text-xs uppercase tracking-[0.2em] disabled:opacity-50"
-              >
-                Next
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={onNextPage}
+              disabled={auditPage >= auditPageCount}
+              className={clsx(settingsMutedButton, "disabled:opacity-50")}
+            >
+              Next
+            </button>
           </div>
-        ) : null}
+        </div>
       </div>
     </section>
   );

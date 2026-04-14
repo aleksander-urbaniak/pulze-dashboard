@@ -1,9 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import clsx from "clsx";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  faAngleLeft,
+  faArrowRightFromBracket,
+  faBarsStaggered,
+  faBrush,
+  faChartColumn,
+  faClockRotateLeft,
+  faDatabase,
+  faGaugeHigh,
+  faShieldHalved,
+  faUserGear,
+  faUsers
+} from "@fortawesome/free-solid-svg-icons";
 
 import ThemeToggle from "./ThemeToggle";
 import type { User } from "../lib/types";
@@ -11,6 +25,7 @@ import type { User } from "../lib/types";
 interface SidebarProps {
   user: User;
   onLogout?: () => void;
+  onOpenProfileEditor?: () => void;
   settingsTabs?: {
     items: Array<{ value: string; label: string }>;
     active: string;
@@ -19,200 +34,348 @@ interface SidebarProps {
 }
 
 const navItems = [
-  {
-    href: "/",
-    label: "Dashboard",
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-        <path
-          d="M4 12l8-8 8 8v7a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1v-7Z"
-          stroke="currentColor"
-          strokeWidth="1.6"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    )
-  },
-  {
-    href: "/analytics",
-    label: "Analytics",
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-        <path
-          d="M4 19h16M7 16v-5M12 16V8M17 16v-3"
-          stroke="currentColor"
-          strokeWidth="1.6"
-          strokeLinecap="round"
-        />
-      </svg>
-    )
-  },
-  {
-    href: "/settings",
-    label: "Settings",
-    icon: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-        <path
-          d="M12 8.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7Z"
-          stroke="currentColor"
-          strokeWidth="1.6"
-        />
-        <path
-          d="M19.4 15.5a7.9 7.9 0 0 0 .1-3l2-1.6-2-3.4-2.4 1a8.4 8.4 0 0 0-2.6-1.5l-.4-2.6H9.9l-.4 2.6a8.4 8.4 0 0 0-2.6 1.5l-2.4-1-2 3.4 2 1.6a7.9 7.9 0 0 0 .1 3l-2 1.6 2 3.4 2.4-1a8.4 8.4 0 0 0 2.6 1.5l.4 2.6h4.2l.4-2.6a8.4 8.4 0 0 0 2.6-1.5l2.4 1 2-3.4-2-1.6Z"
-          stroke="currentColor"
-          strokeWidth="1.6"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      </svg>
-    )
-  }
+  { href: "/", label: "Dashboard", icon: faGaugeHigh },
+  { href: "/analytics", label: "Analytics", icon: faChartColumn }
+];
+
+const settingsIcons: Record<string, typeof faDatabase> = {
+  data: faDatabase,
+  users: faUsers,
+  appearance: faBrush,
+  audit: faClockRotateLeft,
+  access: faShieldHalved
+};
+
+const staticSettingsItems = [
+  { value: "data", label: "Connections" },
+  { value: "users", label: "Users & Groups" },
+  { value: "appearance", label: "Brand Studio" },
+  { value: "audit", label: "Audit Trail" },
+  { value: "access", label: "SSO & Access" }
 ];
 
 const appVersion = process.env.NEXT_PUBLIC_APP_VERSION ?? "v1.0.0";
+const sidebarCollapseKey = "pulze.sidebar.collapsed";
 
-export default function Sidebar({ user, onLogout, settingsTabs }: SidebarProps) {
+export default function Sidebar({
+  user,
+  onLogout,
+  onOpenProfileEditor,
+  settingsTabs
+}: SidebarProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const initials = `${user.firstName?.[0] ?? ""}${user.lastName?.[0] ?? ""}`.toUpperCase();
-  const isSettingsSection = pathname.startsWith("/settings");
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const profileMenuCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const configurationItems = staticSettingsItems.filter((item) => {
+    if (item.value === "data" || item.value === "appearance") {
+      return user.permissions?.includes("settings.read");
+    }
+    if (item.value === "audit") {
+      return user.permissions?.includes("audit.read");
+    }
+    if (item.value === "access") {
+      return user.permissions?.includes("settings.write");
+    }
+    return true;
+  });
 
   useEffect(() => {
     setIsMobileMenuOpen(false);
+    setIsProfileMenuOpen(false);
   }, [pathname]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const saved = window.localStorage.getItem(sidebarCollapseKey);
+    setIsCollapsed(saved === "true");
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    window.localStorage.setItem(sidebarCollapseKey, String(isCollapsed));
+  }, [isCollapsed]);
+
+  useEffect(() => {
+    return () => {
+      if (profileMenuCloseTimer.current) {
+        clearTimeout(profileMenuCloseTimer.current);
+      }
+    };
+  }, []);
+
+  const openProfileMenu = () => {
+    if (profileMenuCloseTimer.current) {
+      clearTimeout(profileMenuCloseTimer.current);
+      profileMenuCloseTimer.current = null;
+    }
+    setIsProfileMenuOpen(true);
+  };
+
+  const scheduleCloseProfileMenu = () => {
+    if (profileMenuCloseTimer.current) {
+      clearTimeout(profileMenuCloseTimer.current);
+    }
+    profileMenuCloseTimer.current = setTimeout(() => {
+      setIsProfileMenuOpen(false);
+    }, 220);
+  };
+
   return (
-    <aside className="nav-static sticky top-0 z-30 flex w-full flex-col border-b border-border bg-surface/90 px-5 py-5 shadow-card sm:px-6 sm:py-6 md:h-screen md:w-80 md:border-b-0 md:border-r md:overflow-y-auto">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="flex w-full justify-center md:w-auto md:justify-start">
-          <Link href="/" className="group flex items-center gap-3 sm:gap-4">
-          <span className="brand-logo flex h-10 w-10 items-center justify-center rounded-2xl border border-accent/40 bg-surface/95 text-accent shadow-[0_0_12px_rgba(56,193,166,0.18)]">
+    <aside
+      className={clsx(
+        "nav-static sticky top-0 z-30 flex w-full flex-col border-b border-[rgb(var(--app-divider)/0.9)] bg-[rgb(var(--app-sidebar-bg))] px-4 py-4 transition-[width,padding] duration-200 md:h-screen md:border-b-0 md:border-r md:py-5 md:overflow-y-auto",
+        isCollapsed ? "md:w-[84px] md:px-2.5" : "md:w-64 md:px-4"
+      )}
+    >
+      <div
+        className={clsx(
+          "flex items-center justify-between gap-3",
+          isCollapsed && "md:flex-col md:justify-start md:gap-3"
+        )}
+      >
+        <Link href="/" className={clsx("group flex items-center gap-3 px-1", isCollapsed && "md:px-0")}>
+          <span className="brand-logo radius-ui flex h-9 w-9 items-center justify-center border border-accent/45 bg-accent text-[#031313] shadow-[0_0_20px_rgb(var(--accent)/0.32)]">
             <span className="brand-logo__image" />
             <svg
-              width="22"
-              height="22"
+              width="18"
+              height="18"
               viewBox="0 0 32 32"
               fill="none"
-              className="brand-logo__fallback text-accent drop-shadow-[0_0_8px_rgba(56,193,166,0.5)]"
+              className="brand-logo__fallback text-[#031313]"
             >
               <path
                 d="M4 16h6l3-6 6 12 3-6h6"
-                stroke="rgb(var(--accent))"
+                stroke="currentColor"
                 strokeWidth="2.2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
               />
             </svg>
           </span>
-          <div className="flex flex-wrap items-baseline gap-2 text-[0.75rem] font-light uppercase tracking-[0.12em] sm:text-base sm:tracking-[0.3em]">
-            <span className="!text-black dark:!text-white">
-              PUL<span className="text-accent">Z</span>E
-            </span>
-            <span className="!text-black/80 dark:!text-white/80">DASHBOARD</span>
-          </div>
-          </Link>
-        </div>
-        <div className="flex w-full items-center justify-end gap-2 md:hidden">
-          <ThemeToggle />
+          {!isCollapsed ? (
+            <div className="leading-tight">
+              <p className="text-[1.08rem] font-semibold uppercase tracking-[0.08em] text-text">
+                PULZE <span className="font-normal text-text/60">DASHBOARD</span>
+              </p>
+              <p className="pt-1 text-[10px] uppercase tracking-[0.2em] text-muted">
+                Version {appVersion}
+              </p>
+            </div>
+          ) : null}
+        </Link>
+
+        <div className="flex items-center gap-2">
           <button
             type="button"
-            className="rounded-full border border-border px-3 py-2 text-xs uppercase tracking-[0.2em]"
-            onClick={() => setIsMobileMenuOpen((open) => !open)}
-            aria-expanded={isMobileMenuOpen}
-            aria-controls="sidebar-menu"
-            aria-label={isMobileMenuOpen ? "Close navigation menu" : "Open navigation menu"}
+            className={clsx(
+              "radius-ui hidden border border-border bg-base/40 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted md:inline-flex",
+              isCollapsed && "md:h-9 md:w-9 md:items-center md:justify-center md:px-0"
+            )}
+            onClick={() => setIsCollapsed((prev) => !prev)}
+            aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
-            {isMobileMenuOpen ? "Close" : "Menu"}
+            <FontAwesomeIcon
+              icon={faAngleLeft}
+              className={clsx("h-3.5 w-3.5 transition-transform", isCollapsed && "rotate-180")}
+            />
           </button>
+          <div className="flex items-center gap-2 md:hidden">
+            <ThemeToggle />
+            <button
+              type="button"
+              className="radius-ui border border-border bg-base/40 px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-muted"
+              onClick={() => setIsMobileMenuOpen((open) => !open)}
+              aria-expanded={isMobileMenuOpen}
+              aria-controls="sidebar-menu"
+              aria-label={isMobileMenuOpen ? "Close navigation menu" : "Open navigation menu"}
+            >
+              <FontAwesomeIcon icon={faBarsStaggered} className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </div>
       </div>
 
       <div
         id="sidebar-menu"
-        className={clsx("mt-6 flex flex-1 flex-col", isMobileMenuOpen ? "flex" : "hidden", "md:flex")}
+        className={clsx(
+          "mt-6 flex flex-1 flex-col",
+          isMobileMenuOpen ? "flex" : "hidden",
+          "md:flex",
+          isCollapsed && "md:mt-5"
+        )}
       >
-        <nav className="flex flex-1 flex-col gap-2 md:mt-10">
+        <nav className={clsx("flex flex-1 flex-col gap-2", isCollapsed && "md:items-center md:gap-1.5")}>
           {navItems.map((item) => {
             const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
             return (
-              <div key={item.href} className="space-y-2">
-                <Link
-                  href={item.href}
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className={clsx(
-                    "nav-link flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm font-semibold",
-                    active
-                      ? "border-accent bg-accent text-white"
-                      : "border-border bg-base/60 text-text"
-                  )}
-                >
-                  {item.icon}
-                  {item.label}
-                </Link>
-                {item.href === "/settings" && settingsTabs && isSettingsSection ? (
-                  <div className="ml-4 flex flex-col gap-2">
-                    {settingsTabs.items.map((tab) => (
-                      <button
-                        key={tab.value}
-                        type="button"
-                        onClick={() => {
-                          settingsTabs.onChange(tab.value);
-                          setIsMobileMenuOpen(false);
-                        }}
-                        className={clsx(
-                          "rounded-xl border px-4 py-2 text-xs uppercase tracking-[0.2em]",
-                          settingsTabs.active === tab.value
-                            ? "border-accent bg-accent text-white"
-                            : "border-border bg-base/60 text-muted"
-                        )}
-                      >
-                        {tab.label}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => setIsMobileMenuOpen(false)}
+                title={isCollapsed ? item.label : undefined}
+                className={clsx(
+                  "nav-link radius-ui flex items-center border px-3 py-2.5 text-[1.02rem] font-medium",
+                  isCollapsed ? "justify-center md:h-11 md:w-11 md:px-0" : "gap-3",
+                  active
+                    ? "border-transparent bg-accent/12 text-accent"
+                    : "border-transparent text-muted hover:bg-white/5 hover:text-text"
+                )}
+              >
+                <FontAwesomeIcon icon={item.icon} className="h-4 w-4 shrink-0" />
+                {!isCollapsed ? <span>{item.label}</span> : null}
+              </Link>
             );
           })}
 
-          <div className="mt-4 hidden md:block">
-            <ThemeToggle />
-          </div>
+          {configurationItems.length > 0 ? (
+            <div className="space-y-2 pt-5">
+              {!isCollapsed ? (
+                <p className="px-2 text-[10px] font-semibold uppercase tracking-[0.24em] text-muted/80">
+                  Configuration
+                </p>
+              ) : null}
+              {configurationItems.map((tab) => {
+                const tabIsActive =
+                  pathname === "/settings" &&
+                  ((settingsTabs?.active ?? searchParams.get("tab") ?? "data") === tab.value);
+                return (
+                  <Link
+                    key={tab.value}
+                    href={`/settings?tab=${tab.value}`}
+                    onClick={() => {
+                      settingsTabs?.onChange(tab.value);
+                      setIsMobileMenuOpen(false);
+                    }}
+                    title={isCollapsed ? tab.label : undefined}
+                    className={clsx(
+                      "nav-link radius-ui flex w-full items-center border px-3 py-2 text-left text-[0.98rem] font-medium",
+                      isCollapsed ? "justify-center md:h-11 md:w-11 md:px-0" : "gap-3",
+                      tabIsActive
+                        ? "border-accent/25 bg-accent/12 text-accent"
+                        : "border-transparent text-muted hover:bg-white/5 hover:text-text"
+                    )}
+                  >
+                    <FontAwesomeIcon
+                      icon={settingsIcons[tab.value] ?? faUserGear}
+                      className="h-4 w-4 shrink-0"
+                    />
+                    {!isCollapsed ? <span>{tab.label}</span> : null}
+                  </Link>
+                );
+              })}
+            </div>
+          ) : null}
         </nav>
 
-        <div className="mt-auto space-y-3">
-          <div className="flex items-center gap-3 rounded-2xl border border-border bg-base/60 p-3">
-            <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border border-border bg-surface/80">
-              {user.avatarUrl ? (
-                <img
-                  src={user.avatarUrl}
-                  alt={`${user.firstName} avatar`}
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <span className="text-sm font-semibold">{initials || "U"}</span>
+        <div
+          className={clsx(
+            "mt-auto space-y-3 border-t border-border px-1 pb-1 pt-4",
+            isCollapsed && "md:space-y-2 md:px-0"
+          )}
+        >
+          <div
+            className="relative"
+            onMouseEnter={openProfileMenu}
+            onMouseLeave={scheduleCloseProfileMenu}
+          >
+            <button
+              type="button"
+              title={`${user.firstName} ${user.lastName} - ${user.email}`}
+              onClick={() => {
+                if (isProfileMenuOpen) {
+                  setIsProfileMenuOpen(false);
+                  return;
+                }
+                openProfileMenu();
+              }}
+              className={clsx(
+                "w-full rounded-xl text-left transition hover:bg-white/5",
+                isCollapsed ? "flex items-center justify-center p-0" : "px-1 py-0.5"
               )}
-            </div>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold">
-                {user.firstName} {user.lastName}
-              </p>
-              <p className="truncate text-xs text-muted">{user.email}</p>
+            >
+              <div
+                className={clsx(
+                  isCollapsed
+                    ? "flex items-center justify-center"
+                    : "grid grid-cols-[36px_minmax(0,1fr)] items-center gap-x-2"
+                )}
+              >
+                <div className="relative h-9 w-9">
+                  <div className="radius-pill flex h-9 w-9 items-center justify-center overflow-hidden border border-[#2a4269] bg-base/35 text-[11px] font-bold shadow-[0_0_0_1px_rgb(8_23_42)]">
+                    {user.avatarUrl ? (
+                      <img
+                        src={user.avatarUrl}
+                        alt={`${user.firstName} avatar`}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <span className="text-slate-100">{initials || "U"}</span>
+                    )}
+                  </div>
+                  {!isCollapsed ? (
+                    <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border border-[rgb(var(--app-sidebar-bg))] bg-emerald-400" />
+                  ) : null}
+                </div>
+
+                {!isCollapsed ? (
+                  <div className="min-w-0">
+                    <div className="truncate text-[1rem] font-semibold leading-tight text-slate-100">
+                      {user.firstName} {user.lastName}
+                    </div>
+                    <div className="truncate text-[11px] leading-tight text-slate-400">{user.email}</div>
+                  </div>
+                ) : null}
+              </div>
+            </button>
+
+            <div
+              className={clsx(
+                "absolute z-40 w-52 rounded-2xl border border-[rgb(var(--app-divider)/0.9)] bg-[rgb(var(--surface)/0.92)] p-1.5 shadow-[0_20px_44px_-26px_rgba(0,0,0,0.9)] backdrop-blur transition duration-200 ease-out",
+                isCollapsed ? "left-1/2 bottom-full mb-1 -translate-x-1/2" : "left-0 bottom-full mb-1",
+                isProfileMenuOpen
+                  ? "pointer-events-auto translate-y-0 opacity-100"
+                  : "pointer-events-none translate-y-2 opacity-0"
+              )}
+              onMouseEnter={openProfileMenu}
+              onMouseLeave={scheduleCloseProfileMenu}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  setIsProfileMenuOpen(false);
+                  onOpenProfileEditor?.();
+                }}
+                className="radius-ui flex w-full items-center gap-2 px-3 py-2 text-sm text-muted hover:bg-white/5 hover:text-text"
+              >
+                <FontAwesomeIcon icon={faUserGear} className="h-4 w-4 shrink-0" />
+                Edit Profile
+              </button>
             </div>
           </div>
+
           {onLogout ? (
             <button
               type="button"
               onClick={onLogout}
-              className="w-full rounded-full border border-border px-4 py-2 text-xs uppercase tracking-[0.2em] text-muted"
+              title={isCollapsed ? "Logout" : undefined}
+              className={clsx(
+                "radius-ui flex w-full items-center px-3 py-2 text-sm text-muted hover:bg-white/5 hover:text-text",
+                isCollapsed ? "justify-center md:h-10 md:w-10 md:px-0" : "gap-2"
+              )}
             >
-              Logout
+              <FontAwesomeIcon icon={faArrowRightFromBracket} className="h-4 w-4 shrink-0" />
+              {!isCollapsed ? "Logout" : null}
             </button>
           ) : null}
-          <p className="text-center text-xs uppercase tracking-[0.2em] text-muted">
-            Version {appVersion}
-          </p>
         </div>
       </div>
     </aside>

@@ -21,6 +21,7 @@ export interface BackgroundSettings {
   gradient: number;
   glow: number;
   noise: number;
+  radius: number;
 }
 
 export interface AppearanceSettings {

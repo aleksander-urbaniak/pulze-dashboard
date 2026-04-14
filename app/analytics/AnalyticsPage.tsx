@@ -137,8 +137,8 @@ export default function AnalyticsPage() {
       value: alerts.length.toLocaleString(),
       change: activeDelta.text,
       trend: activeDelta.trend,
-      color: "text-rose-600",
-      bg: "bg-rose-100",
+      color: "text-rose-300",
+      bg: "bg-rose-500/15",
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
           <path d="M12 7v6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
@@ -158,8 +158,8 @@ export default function AnalyticsPage() {
       value: analytics.counts.currentDay.toLocaleString(),
       change: dayDelta.text,
       trend: dayDelta.trend,
-      color: "text-amber-600",
-      bg: "bg-amber-100",
+      color: "text-amber-300",
+      bg: "bg-amber-500/15",
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
           <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.6" />
@@ -178,8 +178,8 @@ export default function AnalyticsPage() {
       value: analytics.counts.currentMonth.toLocaleString(),
       change: monthDelta.text,
       trend: monthDelta.trend,
-      color: "text-sky-600",
-      bg: "bg-sky-100",
+      color: "text-cyan-300",
+      bg: "bg-cyan-500/15",
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
           <rect x="4" y="6" width="16" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" />
@@ -194,8 +194,8 @@ export default function AnalyticsPage() {
       value: analytics.counts.currentYear.toLocaleString(),
       change: yearDelta.text,
       trend: yearDelta.trend,
-      color: "text-emerald-600",
-      bg: "bg-emerald-100",
+      color: "text-emerald-300",
+      bg: "bg-emerald-500/15",
       icon: (
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
           <path
@@ -308,7 +308,7 @@ export default function AnalyticsPage() {
   if (isLoading || !user) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4 sm:px-6">
-        <div className="rounded-3xl border border-border bg-surface/90 px-4 py-3 text-sm text-muted shadow-card sm:px-6 sm:py-4">
+        <div className="rounded-xl border border-[#c3d4e8] bg-white px-4 py-3 text-sm text-[#60748e] shadow-[0_16px_34px_-26px_rgba(8,30,64,0.28)] dark:border-[#1b2f4d] dark:bg-[#060f1f]/88 dark:text-slate-400 dark:shadow-card sm:px-6 sm:py-4">
           Loading analytics...
         </div>
       </div>
@@ -319,61 +319,64 @@ export default function AnalyticsPage() {
     <div className="min-h-screen flex flex-col md:flex-row">
       <Sidebar user={user} onLogout={handleLogout} />
       <div className="flex-1 min-w-0">
-        <main className="mx-auto max-w-6xl px-5 py-8 sm:px-6 sm:py-10">
-          <AnalyticsHeader
-            isLoadingAlerts={isLoadingAlerts}
-            onRefresh={() => {
-              void loadAlerts();
-              void loadAlertLog();
-              void loadAnalyticsSummary();
-            }}
-          />
-
-          {errors.length > 0 ? (
-            <div className="mt-4 rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-500">
-              {errors.map((error) => `${error.source}: ${error.message}`).join(" | ")}
-            </div>
-          ) : null}
-
-          <AnalyticsStatCards statCards={statCards} />
-
-          <div className="mt-6 grid gap-6 lg:grid-cols-[2fr_1fr]">
-            <AlertTrendSection
-              trendRange={trendRange}
-              onTrendRangeChange={setTrendRange}
-              trendMonth={trendMonth}
-              onTrendMonthChange={setTrendMonth}
-              monthOptions={monthOptions}
-              alertsCount={alerts.length}
-              trendData={trendData}
-              counts={analytics.counts}
+        <main className="w-full min-h-screen border-l border-[rgb(var(--app-divider)/0.82)] bg-[rgb(var(--app-main-bg))] px-4 pb-6 pt-2 sm:px-6 lg:px-6">
+          <div className="mx-auto w-full max-w-[1520px]">
+            <AnalyticsHeader
+              user={user}
+              isLoadingAlerts={isLoadingAlerts}
+              onRefresh={() => {
+                void loadAlerts();
+                void loadAlertLog();
+                void loadAnalyticsSummary();
+              }}
             />
-            <TopSourcesCard sources={analytics.topSources} />
+
+            {errors.length > 0 ? (
+              <div className="mt-4 rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-500">
+                {errors.map((error) => `${error.source}: ${error.message}`).join(" | ")}
+              </div>
+            ) : null}
+
+            <AnalyticsStatCards statCards={statCards} />
+
+            <div className="mt-5 grid gap-4 lg:grid-cols-[2fr_1fr]">
+              <AlertTrendSection
+                trendRange={trendRange}
+                onTrendRangeChange={setTrendRange}
+                trendMonth={trendMonth}
+                onTrendMonthChange={setTrendMonth}
+                monthOptions={monthOptions}
+                alertsCount={alerts.length}
+                trendData={trendData}
+                counts={analytics.counts}
+              />
+              <TopSourcesCard sources={analytics.topSources} />
+            </div>
+
+            <div className="mt-6 grid gap-4 lg:grid-cols-[1.4fr_1fr]">
+              <HistoricalAnalyticsCard analytics={analytics} />
+              <NoisyAlertsCard alerts={analytics.topNoisyAlerts} />
+            </div>
+
+            <TeamSnapshots teamStats={analytics.teamStats} />
+
+            <AlertLogTable
+              alertLogSlice={alertLogSlice}
+              alertLogQuery={alertLogQuery}
+              onQueryChange={setAlertLogQuery}
+              alertLogTotal={alertLogTotal}
+              alertLogPageSize={alertLogPageSize}
+              alertLogPageSafe={alertLogPageSafe}
+              alertLogPageCount={alertLogPageCount}
+              onPageSizeChange={(value) => {
+                setAlertLogPageSize(value);
+                setAlertLogPage(1);
+              }}
+              onPrevPage={() => setAlertLogPage((prev) => Math.max(1, prev - 1))}
+              onNextPage={() => setAlertLogPage((prev) => Math.min(alertLogPageCount, prev + 1))}
+              getAlertSourceUrl={getAlertSourceUrl}
+            />
           </div>
-
-          <div className="mt-8 grid gap-6 lg:grid-cols-[1.4fr_1fr]">
-            <HistoricalAnalyticsCard analytics={analytics} />
-            <NoisyAlertsCard alerts={analytics.topNoisyAlerts} />
-          </div>
-
-          <TeamSnapshots teamStats={analytics.teamStats} />
-
-          <AlertLogTable
-            alertLogSlice={alertLogSlice}
-            alertLogQuery={alertLogQuery}
-            onQueryChange={setAlertLogQuery}
-            alertLogTotal={alertLogTotal}
-            alertLogPageSize={alertLogPageSize}
-            alertLogPageSafe={alertLogPageSafe}
-            alertLogPageCount={alertLogPageCount}
-            onPageSizeChange={(value) => {
-              setAlertLogPageSize(value);
-              setAlertLogPage(1);
-            }}
-            onPrevPage={() => setAlertLogPage((prev) => Math.max(1, prev - 1))}
-            onNextPage={() => setAlertLogPage((prev) => Math.min(alertLogPageCount, prev + 1))}
-            getAlertSourceUrl={getAlertSourceUrl}
-          />
         </main>
       </div>
     </div>

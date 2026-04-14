@@ -293,6 +293,21 @@ export default function HomePage() {
     });
   }, [alerts, searchTerm, filterSource, filterSeverity]);
 
+  const unresolvedAlerts = useMemo(
+    () => alerts.filter((alert) => (alert.ackStatus ?? "active") !== "resolved"),
+    [alerts]
+  );
+
+  const criticalCount = useMemo(
+    () => unresolvedAlerts.filter((alert) => alert.severity === "critical").length,
+    [unresolvedAlerts]
+  );
+
+  const warningCount = useMemo(
+    () => unresolvedAlerts.filter((alert) => alert.severity === "warning").length,
+    [unresolvedAlerts]
+  );
+
   useEffect(() => {
     setSelectedAlertIds((prev) => {
       if (prev.size === 0) {
@@ -556,113 +571,118 @@ export default function HomePage() {
     <div className="min-h-screen flex flex-col md:flex-row">
       <Sidebar user={user} onLogout={handleLogout} />
       <div className="flex-1 min-w-0">
-        <main className="mx-auto w-full max-w-6xl px-5 py-6 sm:px-6 sm:py-8">
-          <DashboardHeader
-            user={user}
-            notifications={notifications}
-            newAlertCount={newAlertCount}
-            isNotificationsOpen={isNotificationsOpen}
-            notificationsRef={notificationsRef}
-            onToggleNotifications={handleToggleNotifications}
-            onClearNotifications={handleClearNotifications}
-            getAlertSourceUrl={getAlertSourceUrl}
-          />
-
-          {staleSources.length > 0 ? (
-            <div className="mt-4 rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-600 dark:text-amber-400">
-              <p className="text-xs uppercase tracking-[0.2em] text-amber-600 dark:text-amber-400">
-                Stale sources
-              </p>
-              <p className="mt-2 text-sm text-amber-600 dark:text-amber-400">
-                {staleSources
-                  .map((source) => {
-                    const label = source.sourceLabel
-                      ? `${source.sourceType} (${source.sourceLabel})`
-                      : source.sourceType;
-                    const lastSuccess = formatRelativeTime(source.lastSuccessAt ?? null);
-                    const retry =
-                      source.nextRetryAt ? `, retry ${formatRelativeTime(source.nextRetryAt)}` : "";
-                    return `${label} last success ${lastSuccess}${retry}`;
-                  })
-                  .join(" | ")}
-              </p>
-            </div>
-          ) : null}
-
-          <AlertsToolbar
-            searchTerm={searchTerm}
-            onSearchTermChange={setSearchTerm}
-            searchInputRef={searchInputRef}
-            filterSource={filterSource}
-            filterSeverity={filterSeverity}
-            sourceFilterOptions={sourceFilterOptions}
-            severityFilterOptions={severityFilterOptions}
-            onFilterSourceChange={handleFilterSourceChange}
-            onFilterSeverityChange={handleFilterSeverityChange}
-            viewMode={viewMode}
-            onViewModeChange={handleViewModeChange}
-            isLoadingAlerts={isLoadingAlerts}
-            onRefresh={() => void loadAlerts()}
-            activeCount={filteredAlerts.length}
-          />
-
-          <AlertsBulkActions
-            filteredAlerts={filteredAlerts}
-            selectedAlertIds={selectedAlertIds}
-            onSelectAll={selectAllFiltered}
-            onClearSelection={clearSelectedAlerts}
-            onExportAlerts={exportAlertsToCsv}
-            canAcknowledge={canAcknowledge}
-            onBulkUpdate={updateAlertStateBulk}
-          />
-
-          {viewMode === "cards" ? (
-            <AlertsCardsView
-              alerts={filteredAlerts}
-              expandedAlertId={expandedAlertId}
-              selectedAlertIds={selectedAlertIds}
-              alertNoteDraft={alertNoteDraft}
-              onAlertNoteChange={setAlertNoteDraft}
-              onSelectAlert={setSelectedAlertId}
-              onToggleExpanded={handleToggleExpanded}
-              onCloseExpanded={() => setExpandedAlertId(null)}
-              onToggleSelection={toggleAlertSelection}
-              onUpdateAlertState={updateAlertState}
+        <main className="w-full min-h-screen border-l border-[rgb(var(--app-divider)/0.82)] bg-[rgb(var(--app-main-bg))] px-4 pb-6 pt-2 sm:px-6 lg:px-6">
+          <div className="mx-auto w-full max-w-[1520px]">
+            <DashboardHeader
+              user={user}
+              alerts={alerts}
+              notifications={notifications}
+              newAlertCount={newAlertCount}
+              isNotificationsOpen={isNotificationsOpen}
+              notificationsRef={notificationsRef}
+              onToggleNotifications={handleToggleNotifications}
+              onClearNotifications={handleClearNotifications}
               getAlertSourceUrl={getAlertSourceUrl}
-              canAcknowledge={canAcknowledge}
             />
-          ) : viewMode === "table" ? (
-            <AlertsTableView
-              alerts={filteredAlerts}
-              expandedAlertId={expandedAlertId}
+
+            {staleSources.length > 0 ? (
+              <div className="mt-4 rounded-2xl border border-amber-400/45 bg-amber-400/10 px-4 py-3 text-sm text-amber-300">
+                <p className="text-xs uppercase tracking-[0.2em] text-amber-300">
+                  Stale sources
+                </p>
+                <p className="mt-2 text-sm text-amber-200/90">
+                  {staleSources
+                    .map((source) => {
+                      const label = source.sourceLabel
+                        ? `${source.sourceType} (${source.sourceLabel})`
+                        : source.sourceType;
+                      const lastSuccess = formatRelativeTime(source.lastSuccessAt ?? null);
+                      const retry =
+                        source.nextRetryAt ? `, retry ${formatRelativeTime(source.nextRetryAt)}` : "";
+                      return `${label} last success ${lastSuccess}${retry}`;
+                    })
+                    .join(" | ")}
+                </p>
+              </div>
+            ) : null}
+
+            <AlertsToolbar
+              searchTerm={searchTerm}
+              onSearchTermChange={setSearchTerm}
+              searchInputRef={searchInputRef}
+              filterSource={filterSource}
+              filterSeverity={filterSeverity}
+              sourceFilterOptions={sourceFilterOptions}
+              severityFilterOptions={severityFilterOptions}
+              onFilterSourceChange={handleFilterSourceChange}
+              onFilterSeverityChange={handleFilterSeverityChange}
+              viewMode={viewMode}
+              onViewModeChange={handleViewModeChange}
+              isLoadingAlerts={isLoadingAlerts}
+              onRefresh={() => void loadAlerts()}
+              activeCount={filteredAlerts.length}
+            />
+
+            <AlertsBulkActions
+              filteredAlerts={filteredAlerts}
               selectedAlertIds={selectedAlertIds}
-              alertNoteDraft={alertNoteDraft}
-              onAlertNoteChange={setAlertNoteDraft}
-              onSelectAlert={setSelectedAlertId}
-              onToggleExpanded={handleToggleExpanded}
-              onToggleSelection={toggleAlertSelection}
-              onUpdateAlertState={updateAlertState}
-              getAlertSourceUrl={getAlertSourceUrl}
+              criticalCount={criticalCount}
+              warningCount={warningCount}
+              onSelectAll={selectAllFiltered}
+              onClearSelection={clearSelectedAlerts}
+              onExportAlerts={exportAlertsToCsv}
               canAcknowledge={canAcknowledge}
+              onBulkUpdate={updateAlertStateBulk}
             />
-          ) : (
-            <AlertsSplitView
-              alerts={filteredAlerts}
-              selectedAlertId={selectedAlertId}
-              selectedAlert={selectedAlert}
-              selectedAlertStatus={selectedAlertStatus}
-              selectedAlertSourceUrl={selectedAlertSourceUrl}
-              selectedAlertIds={selectedAlertIds}
-              listItemRefs={listItemRefs}
-              alertNoteDraft={alertNoteDraft}
-              onAlertNoteChange={setAlertNoteDraft}
-              onSelectAlert={setSelectedAlertId}
-              onToggleSelection={toggleAlertSelection}
-              onUpdateAlertState={updateAlertState}
-              getAlertSourceUrl={getAlertSourceUrl}
-              canAcknowledge={canAcknowledge}
-            />
-          )}
+
+            {viewMode === "cards" ? (
+              <AlertsCardsView
+                alerts={filteredAlerts}
+                expandedAlertId={expandedAlertId}
+                selectedAlertIds={selectedAlertIds}
+                alertNoteDraft={alertNoteDraft}
+                onAlertNoteChange={setAlertNoteDraft}
+                onSelectAlert={setSelectedAlertId}
+                onToggleExpanded={handleToggleExpanded}
+                onCloseExpanded={() => setExpandedAlertId(null)}
+                onToggleSelection={toggleAlertSelection}
+                onUpdateAlertState={updateAlertState}
+                getAlertSourceUrl={getAlertSourceUrl}
+                canAcknowledge={canAcknowledge}
+              />
+            ) : viewMode === "table" ? (
+              <AlertsTableView
+                alerts={filteredAlerts}
+                expandedAlertId={expandedAlertId}
+                selectedAlertIds={selectedAlertIds}
+                alertNoteDraft={alertNoteDraft}
+                onAlertNoteChange={setAlertNoteDraft}
+                onSelectAlert={setSelectedAlertId}
+                onToggleExpanded={handleToggleExpanded}
+                onToggleSelection={toggleAlertSelection}
+                onUpdateAlertState={updateAlertState}
+                getAlertSourceUrl={getAlertSourceUrl}
+                canAcknowledge={canAcknowledge}
+              />
+            ) : (
+              <AlertsSplitView
+                alerts={filteredAlerts}
+                selectedAlertId={selectedAlertId}
+                selectedAlert={selectedAlert}
+                selectedAlertStatus={selectedAlertStatus}
+                selectedAlertSourceUrl={selectedAlertSourceUrl}
+                selectedAlertIds={selectedAlertIds}
+                listItemRefs={listItemRefs}
+                alertNoteDraft={alertNoteDraft}
+                onAlertNoteChange={setAlertNoteDraft}
+                onSelectAlert={setSelectedAlertId}
+                onToggleSelection={toggleAlertSelection}
+                onUpdateAlertState={updateAlertState}
+                getAlertSourceUrl={getAlertSourceUrl}
+                canAcknowledge={canAcknowledge}
+              />
+            )}
+          </div>
         </main>
       </div>
     </div>
