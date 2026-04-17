@@ -268,7 +268,7 @@ export default function DashboardHeader({
               aria-haspopup="menu"
               aria-expanded={isNotificationsOpen}
               title={notificationTitle}
-              className="relative text-slate-300 hover:text-cyan-300"
+              className="relative text-muted hover:text-accent"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                 <path
@@ -292,13 +292,13 @@ export default function DashboardHeader({
             <span className="text-[11px] font-semibold uppercase tracking-[0.11em] text-text">
               Hello, {user.firstName}!
             </span>
-            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-[rgb(var(--base))]">
+            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-on-accent">
               {initials}
             </span>
           </div>
           <div
             className={clsx(
-              "absolute right-0 mt-3 w-[min(18rem,calc(100vw-2rem))] origin-top-right rounded-xl border border-[#c3d4e8] bg-[#ffffff]/96 p-3.5 text-[#233549] shadow-[0_24px_44px_-30px_rgba(0,0,0,0.25)] backdrop-blur z-50 transition duration-200 ease-in-out dark:border-[#1d2b43] dark:bg-[#0a1220]/95 dark:text-inherit dark:shadow-[0_24px_44px_-30px_rgba(0,0,0,0.95)]",
+              "absolute right-0 mt-3 w-[min(18rem,calc(100vw-2rem))] origin-top-right rounded-xl border border-border bg-surface/95 p-3.5 text-text shadow-[0_24px_44px_-30px_rgba(0,0,0,0.25)] backdrop-blur z-50 transition duration-200 ease-in-out dark:shadow-[0_24px_44px_-30px_rgba(0,0,0,0.95)]",
               isNotificationsOpen
                 ? "visible pointer-events-auto translate-y-0 scale-100 opacity-100"
                 : "invisible pointer-events-none -translate-y-1 scale-95 opacity-0"
@@ -306,19 +306,19 @@ export default function DashboardHeader({
             aria-hidden={!isNotificationsOpen}
           >
             <div className="flex items-center justify-between">
-              <p className="text-xs uppercase tracking-[0.2em] text-[#60748e] dark:text-slate-400">Notifications</p>
+              <p className="text-xs uppercase tracking-[0.2em] text-muted">Notifications</p>
               {notifications.length > 0 ? (
                 <button
                   type="button"
                   onClick={onClearNotifications}
-                  className="text-xs uppercase tracking-[0.2em] text-[#60748e] dark:text-slate-400"
+                  className="text-xs uppercase tracking-[0.2em] text-muted"
                 >
                   Clear
                 </button>
               ) : null}
             </div>
             {notifications.length === 0 ? (
-              <p className="mt-3 text-sm text-[#60748e] dark:text-slate-400">No new alerts yet.</p>
+              <p className="mt-3 text-sm text-muted">No new alerts yet.</p>
             ) : (
               <div className="mt-3 space-y-3">
                 {notifications.map((alert) => {
@@ -326,12 +326,12 @@ export default function DashboardHeader({
                   return (
                     <div
                       key={`notify-${alert.id}`}
-                      className="rounded-lg border border-[#c3d4e8] bg-[#f5f9ff] px-3 py-2 dark:border-[#1b2d4a] dark:bg-[#070f1b]"
+                      className="rounded-lg border border-border bg-base/40 px-3 py-2"
                     >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-semibold text-[#1c3048] dark:text-slate-100">
+                        <span className="text-sm font-semibold text-text">
                           {alertSourceUrl ? (
-                            <a href={alertSourceUrl} className="text-cyan-300 hover:underline">
+                            <a href={alertSourceUrl} className="text-accent hover:underline">
                               {alert.name}
                             </a>
                           ) : (
@@ -351,7 +351,7 @@ export default function DashboardHeader({
                           {alert.severity}
                         </span>
                       </div>
-                      <div className="mt-2 flex items-center justify-between text-xs text-[#60748e] dark:text-slate-400">
+                      <div className="mt-2 flex items-center justify-between text-xs text-muted">
                         <span>{alert.sourceLabel || alert.source}</span>
                         <span>{new Date(alert.timestamp).toLocaleString()}</span>
                       </div>
@@ -372,12 +372,12 @@ export default function DashboardHeader({
                 className={clsx(
                   styles.kpiIcon,
                   card.tone === "critical"
-                    ? "text-cyan-300/90"
+                    ? "text-accent/90"
                     : card.tone === "warning"
                       ? "text-amber-300/90"
                       : card.tone === "ok"
                         ? "text-emerald-300/90"
-                        : "text-slate-300/90"
+                        : "text-muted/90"
                 )}
               >
                 {card.icon}

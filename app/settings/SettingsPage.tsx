@@ -144,6 +144,12 @@ export default function SettingsPage() {
 
   const canConfigureAuth = useMemo(() => hasPermission(user, "settings.write"), [user]);
 
+  const canWriteSettings = useMemo(() => hasPermission(user, "settings.write"), [user]);
+
+  useEffect(() => {
+    setCanEditSettings(canWriteSettings);
+  }, [canWriteSettings]);
+
   const loadUsers = useCallback(async (nextEditingId?: string | null) => {
     if (!user || !hasPermission(user, "users.manage")) {
       return;
@@ -204,7 +210,7 @@ export default function SettingsPage() {
     const items: Array<{ value: TabKey; label: string }> = [{ value: "users", label: "Users" }];
     if (canViewSettings) {
       items.unshift({ value: "data", label: "Data Sources" });
-      items.push({ value: "appearance", label: "Apperance" });
+      items.push({ value: "appearance", label: "Appearance" });
     }
     if (canReadAudit) {
       items.push({ value: "audit", label: "Audit Log" });
@@ -569,7 +575,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <main className="w-full min-h-screen px-4 pb-6 pt-2 sm:px-6 lg:px-6">
+    <main className="w-full min-h-screen border-l border-[rgb(var(--app-divider)/0.82)] bg-[rgb(var(--app-main-bg))] px-4 pb-6 pt-2 sm:px-6 lg:px-6">
       <div className="mx-auto w-full max-w-[1520px]">
         {activeTab === "data" && canViewSettings ? (
           <DataSourcesSection

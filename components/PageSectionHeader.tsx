@@ -25,7 +25,7 @@ export default function PageSectionHeader({
         </div>
         {right}
       </div>
-      {subtitle ? <p className="mt-0 text-sm leading-tight text-slate-500">{subtitle}</p> : null}
+      {subtitle ? <p className="mt-0 text-sm leading-tight text-muted">{subtitle}</p> : null}
     </div>
   );
 }

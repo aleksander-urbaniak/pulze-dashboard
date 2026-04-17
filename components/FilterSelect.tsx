@@ -129,7 +129,7 @@ export default function FilterSelect({
               className={clsx(
                 "dropdown-option w-full rounded-lg px-3 py-2 text-left transition-colors",
                 isSelected
-                  ? "bg-accent/15 text-accent"
+                  ? "selected-soft"
                   : isPlaceholder
                     ? "text-muted hover:bg-base/45"
                     : "text-text hover:bg-base/45",

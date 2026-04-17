@@ -39,7 +39,7 @@ export default function AlertTrendSection({
               onClick={() => onTrendRangeChange(range.value)}
               className={
                 trendRange === range.value
-                  ? "rounded-full border border-accent bg-accent px-3 py-1 text-[10px] uppercase tracking-[0.14em] text-white"
+                  ? "rounded-full border border-accent/35 selected-soft px-3 py-1 text-[10px] uppercase tracking-[0.14em]"
                   : "rounded-full border border-border bg-base/35 px-3 py-1 text-[10px] uppercase tracking-[0.14em] text-muted"
               }
             >

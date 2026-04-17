@@ -2,6 +2,7 @@ import type { Config } from "tailwindcss";
 import defaultTheme from "tailwindcss/defaultTheme";
 
 const config: Config = {
+  darkMode: "class",
   content: [
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
     "./components/**/*.{js,ts,jsx,tsx,mdx}"
@@ -23,7 +24,8 @@ const config: Config = {
         muted: "rgb(var(--muted) / <alpha-value>)",
         accent: "rgb(var(--accent) / <alpha-value>)",
         accentSoft: "rgb(var(--accent-soft) / <alpha-value>)",
-        border: "rgb(var(--border) / <alpha-value>)"
+        border: "rgb(var(--border) / <alpha-value>)",
+        "on-accent": "rgb(var(--on-accent-text) / <alpha-value>)"
       },
       boxShadow: {
         card: "0 18px 40px -28px rgba(0, 0, 0, 0.45)"

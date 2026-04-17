@@ -112,7 +112,7 @@ export default function AuditSection({
 
       <div className={clsx(settingsPanelCard, "p-4")}>
         <div className="mb-4 flex items-center justify-between">
-          <div className="inline-flex items-center gap-2 text-sm font-semibold text-slate-300">
+          <div className="inline-flex items-center gap-2 text-sm font-semibold text-text">
             <FontAwesomeIcon icon={faFilter} className="h-3.5 w-3.5 text-accent" />
             Filters
           </div>
@@ -136,7 +136,7 @@ export default function AuditSection({
             onChange={setActionFilter}
             options={actionOptions}
             ariaLabel="Action filter"
-            className="h-12 w-full rounded-xl border border-[#22395c] bg-[#091425] px-3 text-sm text-slate-100"
+            className={clsx("h-12 w-full rounded-xl", settingsFieldClass)}
             optionClassName="text-sm"
           />
           <FilterSelect
@@ -144,7 +144,7 @@ export default function AuditSection({
             onChange={setResourceFilter}
             options={resourceOptions}
             ariaLabel="Resource filter"
-            className="h-12 w-full rounded-xl border border-[#22395c] bg-[#091425] px-3 text-sm text-slate-100"
+            className={clsx("h-12 w-full rounded-xl", settingsFieldClass)}
             optionClassName="text-sm"
           />
           <FilterSelect
@@ -152,7 +152,7 @@ export default function AuditSection({
             onChange={(value) => onPageSizeChange(Number(value))}
             options={pageOptions}
             ariaLabel="Audit page size"
-            className="h-12 w-full rounded-xl border border-[#22395c] bg-[#091425] px-3 text-sm text-slate-100"
+            className={clsx("h-12 w-full rounded-xl", settingsFieldClass)}
             optionClassName="text-sm"
           />
         </div>
@@ -178,30 +178,30 @@ export default function AuditSection({
         </div>
       </div>
 
-      {auditStatus ? <p className="text-sm text-slate-400">{auditStatus}</p> : null}
+      {auditStatus ? <p className="text-sm text-muted">{auditStatus}</p> : null}
 
       <div className={clsx(settingsShellCard, "overflow-hidden")}>
         {isLoadingAudit ? (
-          <p className="px-6 py-8 text-sm text-slate-500">Loading audit log...</p>
+          <p className="px-6 py-8 text-sm text-muted">Loading audit log...</p>
         ) : filteredLogs.length === 0 ? (
-          <p className="px-6 py-8 text-sm text-slate-500">No activity recorded yet.</p>
+          <p className="px-6 py-8 text-sm text-muted">No activity recorded yet.</p>
         ) : (
           <table className="w-full text-left">
-            <thead className="border-b border-[#1d2f4c] bg-[#0b1424]">
+            <thead className="border-b border-border bg-base/70">
               <tr>
-                <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500">
+                <th className="px-4 py-3 text-center text-[10px] font-bold uppercase tracking-[0.22em] text-muted">
                   Timestamp
                 </th>
-                <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500">
+                <th className="px-4 py-3 text-center text-[10px] font-bold uppercase tracking-[0.22em] text-muted">
                   Action
                 </th>
-                <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500">
+                <th className="px-4 py-3 text-center text-[10px] font-bold uppercase tracking-[0.22em] text-muted">
                   Actor
                 </th>
-                <th className="px-4 py-3 text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500">
+                <th className="px-4 py-3 text-center text-[10px] font-bold uppercase tracking-[0.22em] text-muted">
                   Resource
                 </th>
-                <th className="px-4 py-3 text-right text-[10px] font-bold uppercase tracking-[0.22em] text-slate-500">
+                <th className="px-4 py-3 text-center text-[10px] font-bold uppercase tracking-[0.22em] text-muted">
                   Details
                 </th>
               </tr>
@@ -210,27 +210,27 @@ export default function AuditSection({
               {filteredLogs.map((log) => {
                 const resource = resourceFromAction(log.action);
                 return (
-                  <tr key={log.id} className="border-t border-[#1d2f4c]">
-                    <td className="px-4 py-3 text-sm text-slate-300">{new Date(log.createdAt).toLocaleString()}</td>
-                    <td className="px-4 py-3">
-                      <span className="inline-flex rounded-lg border border-[#2c3d5a] bg-[#162336] px-2 py-1 text-[11px] font-semibold text-slate-200">
+                  <tr key={log.id} className="border-t border-border">
+                    <td className="px-4 py-3 text-left text-sm text-text">{new Date(log.createdAt).toLocaleString()}</td>
+                    <td className="px-4 py-3 text-left">
+                      <span className="inline-flex rounded-lg border border-border bg-base/80 px-2 py-1 text-[11px] font-semibold text-text">
                         {formatAction(log.action)}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="inline-flex items-center gap-2 text-sm text-slate-300">
-                        <FontAwesomeIcon icon={faUser} className="h-3.5 w-3.5 text-slate-500" />
+                    <td className="px-4 py-3 text-left">
+                      <div className="inline-flex items-center gap-2 text-sm text-text">
+                        <FontAwesomeIcon icon={faUser} className="h-3.5 w-3.5 text-muted" />
                         {log.userName ?? "System"}
                       </div>
                     </td>
-                    <td className="px-4 py-3">
-                      <span className="inline-flex items-center gap-1.5 rounded-lg border border-[#2c3d5a] bg-[#101c30] px-2 py-1 text-[11px] font-semibold text-slate-200">
-                        <FontAwesomeIcon icon={faBoxArchive} className="h-3 w-3 text-slate-400" />
+                    <td className="px-4 py-3 text-left">
+                      <span className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-base/80 px-2 py-1 text-[11px] font-semibold text-text">
+                        <FontAwesomeIcon icon={faBoxArchive} className="h-3 w-3 text-muted" />
                         {resource}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      <span className="inline-flex max-w-[320px] items-center justify-end text-xs text-slate-400" title={formatAuditDetails(log.details)}>
+                    <td className="px-4 py-3 text-left">
+                      <span className="inline-flex max-w-[320px] items-center justify-start text-xs text-muted" title={formatAuditDetails(log.details)}>
                         <span className="truncate">{formatAuditDetails(log.details)}</span>
                       </span>
                     </td>
@@ -241,7 +241,7 @@ export default function AuditSection({
           </table>
         )}
 
-        <div className="flex items-center justify-between border-t border-[#1d2f4c] bg-white/[0.04] px-4 py-3 text-sm text-slate-400">
+        <div className="flex items-center justify-between border-t border-border bg-base/40 px-4 py-3 text-sm text-muted">
           <span>
             {auditTotal === 0
               ? "Showing 0 to 0 of 0"
@@ -262,7 +262,7 @@ export default function AuditSection({
             >
               Previous
             </button>
-            <span className="rounded-xl bg-[#091425] px-3 py-2 text-[11px] font-bold text-slate-200">
+            <span className="rounded-xl border border-border bg-base/80 px-3 py-2 text-[11px] font-bold text-text">
               Page {auditPage} of {auditPageCount}
             </span>
             <button

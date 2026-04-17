@@ -30,6 +30,7 @@ COPY --from=base /app/.next ./.next
 COPY --from=base /app/public ./public
 COPY --from=base /app/next.config.mjs ./next.config.mjs
 COPY --from=base /app/data ./data
+COPY --from=base /app/scripts/pulze-cli.mjs ./scripts/pulze-cli.mjs
 
 # Pick up runtime security updates available in Debian repositories.
 RUN apt-get update \
@@ -39,6 +40,9 @@ RUN apt-get update \
 # Remove npm/npx from runtime image to reduce attack surface and avoid npm-only CVEs.
 RUN rm -rf /usr/local/lib/node_modules/npm \
   && rm -f /usr/local/bin/npm /usr/local/bin/npx
+
+RUN chmod +x /app/scripts/pulze-cli.mjs \
+  && ln -sf /app/scripts/pulze-cli.mjs /usr/local/bin/pulze
 
 EXPOSE 3000
 CMD ["node", "node_modules/next/dist/bin/next", "start"]

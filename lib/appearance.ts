@@ -130,7 +130,7 @@ export function normalizeAppearanceSettings(
       surface: defaultAppearance.light.surface,
       text: defaultAppearance.light.text,
       muted: defaultAppearance.light.muted,
-      accent: lightAccent,
+      accent: ensureAccessibleAccent(lightAccent, "light", defaultAppearance.light.accent),
       accentSoft: lightAccentSoft,
       border: defaultAppearance.light.border
     },
@@ -140,7 +140,7 @@ export function normalizeAppearanceSettings(
       surface: defaultAppearance.dark.surface,
       text: defaultAppearance.dark.text,
       muted: defaultAppearance.dark.muted,
-      accent: darkAccent,
+      accent: ensureAccessibleAccent(darkAccent, "dark", defaultAppearance.dark.accent),
       accentSoft: darkAccentSoft,
       border: defaultAppearance.dark.border
     },
@@ -171,6 +171,51 @@ function normalizeHex(value: string, fallback: string) {
     return `#${expanded.toUpperCase()}`;
   }
   return fallback;
+}
+
+function hexToRgbChannels(value: string, fallback: string) {
+  const normalized = normalizeHex(value, fallback).slice(1);
+  return [0, 2, 4].map((index) => parseInt(normalized.slice(index, index + 2), 16));
+}
+
+function rgbChannelsToHex(channels: number[]) {
+  return `#${channels
+    .map((channel) => Math.max(0, Math.min(255, Math.round(channel))).toString(16).padStart(2, "0"))
+    .join("")
+    .toUpperCase()}`;
+}
+
+function mixHex(value: string, target: string, ratio: number, fallback: string) {
+  const sourceChannels = hexToRgbChannels(value, fallback);
+  const targetChannels = hexToRgbChannels(target, target);
+  return rgbChannelsToHex(
+    sourceChannels.map((channel, index) => channel + (targetChannels[index] - channel) * ratio)
+  );
+}
+
+function getLuminance(value: string, fallback: string) {
+  const [red, green, blue] = hexToRgbChannels(value, fallback);
+  return (0.299 * red + 0.587 * green + 0.114 * blue) / 255;
+}
+
+function ensureAccessibleAccent(value: string, mode: "light" | "dark", fallback: string) {
+  let adjusted = normalizeHex(value, fallback);
+
+  if (mode === "light") {
+    while (getLuminance(adjusted, fallback) > 0.78) {
+      adjusted = mixHex(adjusted, defaultAppearance.light.muted, 0.16, fallback);
+    }
+    return adjusted;
+  }
+
+  while (getLuminance(adjusted, fallback) < 0.28) {
+    adjusted = mixHex(adjusted, defaultAppearance.dark.text, 0.18, fallback);
+  }
+  return adjusted;
+}
+
+function isLightColor(value: string, fallback: string) {
+  return getLuminance(value, fallback) > 0.68;
 }
 
 function hexToRgbTriplet(value: string, fallback: string) {
@@ -241,6 +286,14 @@ export function applyAppearanceToDocument(appearance: AppearanceSettings) {
   const glassEnabled = false;
   const logoUrl = normalized.branding.logoUrl.trim();
   const brandLogo = logoUrl ? `url("${escapeCssUrl(logoUrl)}")` : "none";
+
+  const lightOnAccentTextColor = isLightColor(normalized.light.accent, fallback.light.accent)
+    ? hexToRgbTriplet("#000000", "#000000")
+    : hexToRgbTriplet("#FFFFFF", "#FFFFFF");
+  const darkOnAccentTextColor = isLightColor(normalized.dark.accent, fallback.dark.accent)
+    ? hexToRgbTriplet("#000000", "#000000")
+    : hexToRgbTriplet("#FFFFFF", "#FFFFFF");
+
   const extras = [
     `--bg-gradient: ${gradient.toFixed(2)};`,
     `--bg-glow: ${glow.toFixed(2)};`,
@@ -254,7 +307,16 @@ export function applyAppearanceToDocument(appearance: AppearanceSettings) {
     `--brand-logo-url: ${brandLogo};`
   ].join("\n");
   const styleId = "pulze-appearance-theme";
-  const css = `:root {\n${lightCss}\n${extras}\n}\n\n.dark {\n${darkCss}\n}`;
+  const css = `:root {
+${lightCss}
+--on-accent-text: ${lightOnAccentTextColor};
+${extras}
+}
+
+.dark {
+${darkCss}
+--on-accent-text: ${darkOnAccentTextColor};
+}`;
   let style = document.getElementById(styleId) as HTMLStyleElement | null;
   if (!style) {
     style = document.createElement("style");

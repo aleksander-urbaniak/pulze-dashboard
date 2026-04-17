@@ -63,38 +63,74 @@ export default function AuthScreen({
         }`}
       >
         <div className="relative z-10">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="inline-flex items-center gap-3">
-              <span className="brand-logo flex h-10 w-10 items-center justify-center rounded-2xl border border-border bg-surface">
-                <span className="brand-logo__image" />
-                <svg width="22" height="22" viewBox="0 0 32 32" fill="none" className="brand-logo__fallback">
-                  <path
-                    d="M4 16h6l3-6 6 12 3-6h6"
-                    stroke="currentColor"
-                    strokeWidth="2.2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </span>
-              <div>
-                <p className="text-sm uppercase tracking-[0.3em] text-muted">PulZe</p>
-                <h1 className={`font-semibold ${isSetupView ? "text-3xl" : "text-2xl"}`}>Pulze Dashboard</h1>
-                {!isSetupView ? (
-                  <p className="mt-2 text-sm text-muted">Sign in to continue monitoring.</p>
-                ) : null}
+          {!isCheckingSetup && (
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="inline-flex items-center gap-3">
+                <span className="brand-logo flex h-10 w-10 items-center justify-center rounded-2xl border border-border bg-surface">
+                  <span className="brand-logo__image" />
+                  <svg width="22" height="22" viewBox="0 0 32 32" fill="none" className="brand-logo__fallback">
+                    <path
+                      d="M4 16h6l3-6 6 12 3-6h6"
+                      stroke="currentColor"
+                      strokeWidth="2.2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </span>
+                <div>
+                  <p className="text-sm uppercase tracking-[0.3em] text-muted">PulZe</p>
+                  <h1 className={`font-semibold ${isSetupView ? "text-3xl" : "text-2xl"}`}>Pulze Dashboard</h1>
+                  {!isSetupView ? (
+                    <p className="mt-2 text-sm text-muted">Sign in to continue monitoring.</p>
+                  ) : null}
+                </div>
+              </div>
+              <div className="hidden sm:block">
+                <ThemeToggle />
               </div>
             </div>
-            <div className="hidden sm:block">
-              <ThemeToggle />
+          )}
+          {isCheckingSetup && (
+            <div className="flex justify-center">
+              <div className="inline-flex items-center gap-3">
+                <span className="brand-logo flex h-10 w-10 items-center justify-center rounded-2xl border border-border bg-surface">
+                  <span className="brand-logo__image" />
+                  <svg width="22" height="22" viewBox="0 0 32 32" fill="none" className="brand-logo__fallback">
+                    <path
+                      d="M4 16h6l3-6 6 12 3-6h6"
+                      stroke="currentColor"
+                      strokeWidth="2.2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </span>
+                <h1 className="font-semibold text-2xl">Pulze Dashboard</h1>
+              </div>
             </div>
-          </div>
+          )}
           <div className="mt-4 flex justify-end sm:hidden">
-            <ThemeToggle />
+            {!isCheckingSetup && <ThemeToggle />}
           </div>
 
           {isCheckingSetup ? (
-            <p className="mt-6 text-sm text-muted">Checking setup status...</p>
+            <div className="mt-8 flex flex-col items-center justify-center gap-4 py-8">
+              <div className="relative h-12 w-12">
+                <svg className="spinner h-12 w-12 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  />
+                </svg>
+              </div>
+              <div className="text-center">
+                <p className="text-sm font-medium text-text">Checking setup status...</p>
+                <p className="mt-1 text-xs text-muted">Please wait while we verify your configuration</p>
+              </div>
+            </div>
           ) : needsSetup ? (
             <div className="mt-8 grid gap-8 md:grid-cols-[1.2fr_1fr] md:gap-10">
               <div>
@@ -118,7 +154,7 @@ export default function AuthScreen({
                   <p className="text-xs uppercase tracking-[0.3em] text-muted">Setup checklist</p>
                   <ol className="mt-4 space-y-2.5 text-sm text-muted">
                     <li className="flex items-center gap-2">
-                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent text-xs font-semibold text-white">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-accent text-xs font-semibold text-on-accent">
                         1
                       </span>
                       Create your admin account.
@@ -210,7 +246,7 @@ export default function AuthScreen({
                 {setupError ? <p className="text-sm text-red-500">{setupError}</p> : null}
                 <button
                   type="submit"
-                  className="w-full rounded-xl bg-accent py-3.5 text-sm font-semibold text-white"
+                  className="w-full rounded-xl bg-accent py-3.5 text-sm font-semibold text-on-accent"
                 >
                   Create Admin Account
                 </button>
@@ -271,7 +307,7 @@ export default function AuthScreen({
               {loginError ? <p className="text-sm text-red-500">{loginError}</p> : null}
               <button
                 type="submit"
-                className="w-full rounded-xl bg-accent py-3.5 text-sm font-semibold text-white"
+                className="w-full rounded-xl bg-accent py-3.5 text-sm font-semibold text-on-accent"
               >
                 {isTwoFactorStep ? "Verify Code" : "Sign In"}
               </button>

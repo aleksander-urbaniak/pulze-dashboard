@@ -93,7 +93,7 @@ export default function AlertsToolbar({
             onClick={() => onViewModeChange("cards")}
             className={clsx(
               styles.viewToggleButton,
-              viewMode === "cards" ? "bg-accent text-white" : "text-muted"
+              viewMode === "cards" ? "selected-soft" : "text-muted"
             )}
           >
             Cards
@@ -103,7 +103,7 @@ export default function AlertsToolbar({
             onClick={() => onViewModeChange("table")}
             className={clsx(
               styles.viewToggleButton,
-              viewMode === "table" ? "bg-accent text-white" : "text-muted"
+              viewMode === "table" ? "selected-soft" : "text-muted"
             )}
           >
             Table
@@ -113,7 +113,7 @@ export default function AlertsToolbar({
             onClick={() => onViewModeChange("split")}
             className={clsx(
               styles.viewToggleButton,
-              viewMode === "split" ? "bg-accent text-white" : "text-muted"
+              viewMode === "split" ? "selected-soft" : "text-muted"
             )}
           >
             Split

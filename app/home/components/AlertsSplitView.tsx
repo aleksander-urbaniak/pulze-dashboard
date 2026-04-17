@@ -75,7 +75,7 @@ export default function AlertsSplitView({
                   className={clsx(
                     "w-full rounded-xl border px-4 py-3 text-left transition",
                     selectedAlertId === alert.id
-                      ? "border-accent bg-accent/10"
+                      ? "border-accent/35 selected-soft"
                       : "border-border bg-base/40 hover:border-accent/40"
                   )}
                 >
@@ -92,7 +92,7 @@ export default function AlertsSplitView({
                         className={clsx(
                           "flex h-5 w-5 items-center justify-center rounded-full border text-[10px]",
                           isSelected
-                            ? "border-accent bg-accent text-white"
+                            ? "border-accent/35 selected-soft"
                             : "border-border bg-base/80 text-muted"
                         )}
                       >

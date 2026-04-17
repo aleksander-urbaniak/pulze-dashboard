@@ -88,7 +88,7 @@ export default function AlertsTableView({
                         className={clsx(
                           "flex h-5 w-5 items-center justify-center rounded-full border text-[10px]",
                           isSelected
-                            ? "border-accent bg-accent text-white"
+                            ? "border-accent/35 selected-soft"
                             : "border-border bg-base/80 text-muted"
                         )}
                       >

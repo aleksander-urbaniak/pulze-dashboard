@@ -73,12 +73,12 @@ function Slider({
     <label className="space-y-2">
       <div className="flex items-center justify-between">
         <span className={settingsLabelClass}>{label}</span>
-        <span className="text-[11px] font-mono text-slate-400">
+        <span className="text-[11px] font-mono text-muted">
           {value}
           {suffix}
         </span>
       </div>
-      <div className="radius-ui border border-[#22395c] bg-[#091425] px-3 py-3">
+      <div className="glass-field radius-ui border px-3 py-3">
         <input
           type="range"
           min={min}
@@ -121,6 +121,11 @@ export default function AppearanceSection({
     ? mixHex(palette.surface, palette.base, 0.2)
     : mixHex(palette.surface, palette.base, 0.32);
   const previewBorder = mixHex(palette.border, isDarkTheme ? "#0a1424" : "#ffffff", isDarkTheme ? 0.2 : 0.15);
+  const previewHeroBg = isDarkTheme
+    ? `linear-gradient(135deg, ${mixHex(palette.accent, palette.base, 0.78)} 0%, ${mixHex(palette.surface, palette.base, 0.12)} 100%)`
+    : `linear-gradient(135deg, ${mixHex(palette.accent, "#FFFFFF", 0.82)} 0%, ${mixHex(palette.surface, palette.base, 0.08)} 100%)`;
+  const previewAccentGlow = `${palette.accent}2E`;
+  const previewMutedBg = `${palette.muted}18`;
 
   function handleAccentChange(value: string) {
     onUpdateAppearance("dark", "accent", value);
@@ -133,7 +138,7 @@ export default function AppearanceSection({
     <section className="space-y-4">
       <PageSectionHeader
         icon={faBrush}
-        title="Apperance"
+        title="Appearance"
         subtitle="Tune branding, accent, and visual effects across the dashboard."
         right={headerRight}
       />
@@ -141,19 +146,19 @@ export default function AppearanceSection({
       <div className="grid gap-6 xl:grid-cols-[430px_minmax(0,1fr)]">
       <aside className={clsx(settingsShellCard, "custom-scrollbar p-5 xl:max-h-[calc(100vh-10rem)] xl:overflow-y-auto")}>
         <div className="space-y-8">
-          {settingsStatus ? <p className="text-sm text-slate-300">{settingsStatus}</p> : null}
-          {!isAdmin ? <p className="text-sm text-slate-500">Only admins can update the global appearance.</p> : null}
+          {settingsStatus ? <p className="text-sm text-muted">{settingsStatus}</p> : null}
+          {!isAdmin ? <p className="text-sm text-muted">Only admins can update the global appearance.</p> : null}
 
           <section className="space-y-4">
-            <h3 className="text-sm font-medium text-slate-100">Branding</h3>
-            <label className="radius-panel block cursor-pointer border-2 border-dashed border-[#27466c] bg-[#07101f] p-6 text-center transition hover:border-accent/45 hover:bg-accent/5">
-              <div className="radius-pill mx-auto flex h-11 w-11 items-center justify-center bg-accent/20 text-accent">
+            <h3 className="text-sm font-medium text-text">Branding</h3>
+            <label className="radius-panel glass-field block cursor-pointer border-2 border-dashed p-6 text-center transition hover:border-accent/45 hover:bg-accent/5">
+              <div className="radius-pill mx-auto flex h-11 w-11 items-center justify-center bg-accent/20 text-on-accent">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                   <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
                 </svg>
               </div>
-              <p className="mt-4 text-sm font-semibold text-slate-100">Upload Workspace Logo</p>
-              <p className="mt-1 text-xs text-slate-500">SVG or PNG, Max 2MB</p>
+              <p className="mt-4 text-sm font-semibold text-text">Upload Workspace Logo</p>
+              <p className="mt-1 text-xs text-muted">SVG or PNG, Max 2MB</p>
               <input
                 type="file"
                 accept="image/*"
@@ -198,7 +203,7 @@ export default function AppearanceSection({
 
           <section className="space-y-5">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-medium text-slate-100">Theme Engine</h3>
+              <h3 className="text-sm font-medium text-text">Theme Engine</h3>
               <button
                 type="button"
                 onClick={() =>
@@ -218,7 +223,7 @@ export default function AppearanceSection({
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="space-y-2">
                   <span className={settingsLabelClass}>Accent Color</span>
-                  <div className="radius-ui flex items-center gap-2 border border-[#22395c] bg-[#091425] p-2">
+                  <div className="glass-field radius-ui flex items-center gap-2 border p-2">
                     <input
                       type="color"
                       value={palette.accent}
@@ -226,21 +231,21 @@ export default function AppearanceSection({
                       onChange={(event) => handleAccentChange(event.target.value)}
                       className="h-9 w-9 rounded-lg border-0 bg-transparent p-0"
                     />
-                    <span className="text-xs font-mono uppercase text-slate-300">{palette.accent}</span>
+                    <span className="text-xs font-mono uppercase text-muted">{palette.accent}</span>
                   </div>
                 </label>
 
                 <div className="space-y-2">
                   <span className={settingsLabelClass}>Appearance</span>
-                  <div className="radius-ui flex border border-[#22395c] bg-[#091425] p-1">
+                  <div className="glass-field radius-ui flex border p-1">
                     <button
                       type="button"
                       onClick={() => onSetTheme("dark")}
                       className={clsx(
                         "radius-ui flex-1 py-2 transition",
                         isDarkTheme
-                          ? "bg-accent/15 text-accent"
-                          : "text-slate-200 hover:text-accent"
+                          ? "selected-soft"
+                          : "text-text hover:text-accent"
                       )}
                     >
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" className="mx-auto">
@@ -259,8 +264,8 @@ export default function AppearanceSection({
                       className={clsx(
                         "radius-ui flex-1 py-2 transition",
                         !isDarkTheme
-                          ? "bg-accent/15 text-accent"
-                          : "text-slate-200 hover:text-accent"
+                          ? "selected-soft"
+                          : "text-text hover:text-accent"
                       )}
                     >
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" className="mx-auto">
@@ -305,8 +310,8 @@ export default function AppearanceSection({
       </aside>
 
       <section className={clsx(settingsShellCard, "relative flex min-h-[640px] items-center justify-center overflow-hidden p-10")}>
-        <div className="absolute left-8 top-8 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+        <div className="absolute left-8 top-8 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-muted">
+          <span className="h-1.5 w-1.5 rounded-full bg-accent" />
           Live Preview
         </div>
 
@@ -337,21 +342,60 @@ export default function AppearanceSection({
                     className="flex h-10 w-10 items-center justify-center text-sm font-bold"
                     style={{
                       borderRadius: `calc(8px + ${radius * 0.25}px)`,
-                      backgroundColor: `${palette.accent}22`,
-                      color: palette.muted
+                      backgroundColor: previewMutedBg,
+                      color: palette.text
                     }}
                   >
                     P
                   </div>
                   <div
-                    className="h-8 w-8 rounded-full border"
-                    style={{ borderColor: palette.muted, backgroundColor: `${palette.muted}33` }}
-                  />
+                    className="flex h-8 w-8 items-center justify-center rounded-full border"
+                    style={{ borderColor: palette.muted, backgroundColor: `${palette.muted}20` }}
+                  >
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: palette.accent }} />
+                  </div>
                 </div>
 
-                <div className="mt-5">
-                  <h4 className="text-xl font-bold" style={{ color: palette.text }}>{appName}</h4>
-                  <p className="mt-1 text-[11px]" style={{ color: palette.muted }}>{customUrl}</p>
+                <div
+                  className="mt-5 overflow-hidden border p-4"
+                  style={{
+                    borderColor: previewBorder,
+                    borderRadius: `calc(14px + ${radius * 0.45}px)`,
+                    background: previewHeroBg,
+                    boxShadow: `0 18px 34px -24px ${previewAccentGlow}`
+                  }}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.22em]" style={{ color: palette.muted }}>
+                        Workspace Health
+                      </p>
+                      <h4 className="mt-2 text-xl font-bold" style={{ color: palette.text }}>{appName}</h4>
+                    </div>
+                    <div
+                      className="rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em]"
+                      style={{ backgroundColor: `${palette.surface}B8`, color: palette.text }}
+                    >
+                      Stable
+                    </div>
+                  </div>
+
+                  <p className="mt-3 text-[11px]" style={{ color: palette.muted }}>
+                    {customUrl}
+                  </p>
+
+                  <div className="mt-4 flex items-end gap-2">
+                    {[42, 70, 54, 86, 62, 78].map((height, index) => (
+                      <span
+                        key={height}
+                        className="w-4 rounded-full"
+                        style={{
+                          height: `${height * 0.46}px`,
+                          backgroundColor: index === 3 ? palette.accent : `${palette.text}22`
+                        }}
+                      />
+                    ))}
+                  </div>
                 </div>
 
                 <div className="mt-6 space-y-3">
@@ -365,10 +409,15 @@ export default function AppearanceSection({
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <span className="h-7 w-7 rounded-lg" style={{ backgroundColor: `${palette.accent}26` }} />
+                        <span
+                          className="flex h-9 w-9 items-center justify-center rounded-xl"
+                          style={{ backgroundColor: `${palette.accent}26` }}
+                        >
+                          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: palette.accent }} />
+                        </span>
                         <div>
                           <p className="text-xs font-semibold" style={{ color: palette.text }}>Active Alerts</p>
-                          <p className="text-[10px]" style={{ color: palette.muted }}>2 critical â€˘ 2 warning</p>
+                          <p className="text-[10px]" style={{ color: palette.muted }}>2 critical and 2 warning</p>
                         </div>
                       </div>
                       <span style={{ color: palette.muted }}>&gt;</span>
@@ -376,7 +425,10 @@ export default function AppearanceSection({
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
-                    {[{ title: "Avg. Resolution", value: "12m" }, { title: "Resolved 24h", value: "3" }].map((card) => (
+                    {[
+                      { title: "Avg. Resolution", value: "12m", meta: "down 8%" },
+                      { title: "Resolved 24h", value: "3", meta: "best today" }
+                    ].map((card) => (
                       <div
                         key={card.title}
                         className="border p-3"
@@ -388,6 +440,7 @@ export default function AppearanceSection({
                       >
                         <p className="text-[10px] uppercase tracking-[0.14em]" style={{ color: palette.muted }}>{card.title}</p>
                         <p className="mt-3 text-lg font-semibold" style={{ color: palette.text }}>{card.value}</p>
+                        <p className="mt-1 text-[10px]" style={{ color: palette.muted }}>{card.meta}</p>
                       </div>
                     ))}
                   </div>
@@ -396,10 +449,9 @@ export default function AppearanceSection({
 
               <div className="absolute bottom-0 left-0 right-0 px-5 pb-5">
                 <button
-                  className="w-full py-3 text-xs font-bold uppercase tracking-[0.16em] transition hover:brightness-110"
+                  className="w-full py-3 text-xs font-bold uppercase tracking-[0.16em] transition hover:brightness-110 text-on-accent"
                   style={{
                     backgroundColor: palette.accent,
-                    color: isDarkTheme ? "#040a16" : "#ffffff",
                     borderRadius: `calc(10px + ${radius * 0.3}px)`
                   }}
                 >

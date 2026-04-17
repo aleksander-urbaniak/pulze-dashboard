@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import clsx from "clsx";
@@ -48,7 +49,7 @@ const settingsIcons: Record<string, typeof faDatabase> = {
 const staticSettingsItems = [
   { value: "data", label: "Data Sources" },
   { value: "users", label: "Users & Groups" },
-  { value: "appearance", label: "Apperance" },
+  { value: "appearance", label: "Appearance" },
   { value: "audit", label: "Audit Trail" },
   { value: "access", label: "SSO & Access" }
 ];
@@ -112,14 +113,14 @@ export default function Sidebar({ onLogout, onOpenProfileEditor, settingsTabs }:
         )}
       >
         <Link href="/" className={clsx("group flex items-center gap-3 px-1", isCollapsed && "md:px-0")}>
-          <span className="brand-logo radius-ui flex h-9 w-9 items-center justify-center border border-accent/45 bg-accent text-[#031313] shadow-[0_0_20px_rgb(var(--accent)/0.32)]">
+          <span className="brand-logo radius-ui flex h-9 w-9 items-center justify-center border border-accent/45 bg-accent text-on-accent shadow-[0_0_20px_rgb(var(--accent)/0.32)]">
             <span className="brand-logo__image" />
             <svg
               width="18"
               height="18"
               viewBox="0 0 32 32"
               fill="none"
-              className="brand-logo__fallback text-[#031313]"
+              className="brand-logo__fallback text-on-accent"
             >
               <path
                 d="M4 16h6l3-6 6 12 3-6h6"
@@ -196,7 +197,7 @@ export default function Sidebar({ onLogout, onOpenProfileEditor, settingsTabs }:
                   "nav-link radius-ui flex items-center border px-3 py-2.5 text-[1.02rem] font-medium",
                   isCollapsed ? "justify-center md:h-11 md:w-11 md:px-0" : "gap-3",
                   active
-                    ? "border-transparent bg-accent/12 text-accent"
+                    ? "border-accent/35 selected-soft"
                     : "border-transparent text-muted hover:bg-white/5 hover:text-text"
                 )}
               >
@@ -230,7 +231,7 @@ export default function Sidebar({ onLogout, onOpenProfileEditor, settingsTabs }:
                       "nav-link radius-ui flex w-full items-center border px-3 py-2 text-left text-[0.98rem] font-medium",
                       isCollapsed ? "justify-center md:h-11 md:w-11 md:px-0" : "gap-3",
                       tabIsActive
-                        ? "border-accent/25 bg-accent/12 text-accent"
+                        ? "border-accent/35 selected-soft"
                         : "border-transparent text-muted hover:bg-white/5 hover:text-text"
                     )}
                   >
@@ -272,28 +273,31 @@ export default function Sidebar({ onLogout, onOpenProfileEditor, settingsTabs }:
                 )}
               >
                 <div className="relative h-9 w-9">
-                  <div className="radius-pill flex h-9 w-9 items-center justify-center overflow-hidden border border-[#2a4269] bg-base/35 text-[11px] font-bold shadow-[0_0_0_1px_rgb(8_23_42)]">
+                    <div className="radius-pill flex h-9 w-9 items-center justify-center overflow-hidden border border-border bg-base/35 text-[11px] font-bold shadow-[0_0_0_1px_rgb(var(--border)/0.35)]">
                     {user.avatarUrl ? (
-                      <img
+                      <Image
                         src={user.avatarUrl}
                         alt={`${user.firstName} avatar`}
-                        className="h-full w-full object-cover"
+                        fill
+                        unoptimized
+                        sizes="36px"
+                        className="object-cover"
                       />
                     ) : (
-                      <span className="text-slate-100">{initials || "U"}</span>
+                      <span className="text-text">{initials || "U"}</span>
                     )}
                   </div>
                   {!isCollapsed ? (
-                    <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border border-[rgb(var(--app-sidebar-bg))] bg-emerald-400" />
+                    <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border border-[rgb(var(--app-sidebar-bg))] bg-accent" />
                   ) : null}
                 </div>
 
                 {!isCollapsed ? (
                   <div className="min-w-0">
-                    <div className="truncate text-[1rem] font-semibold leading-tight text-slate-100">
+                    <div className="truncate text-[1rem] font-semibold leading-tight text-text">
                       {user.firstName} {user.lastName}
                     </div>
-                    <div className="truncate text-[11px] leading-tight text-slate-400">{user.email}</div>
+                    <div className="truncate text-[11px] leading-tight text-muted">{user.email}</div>
                   </div>
                 ) : null}
               </div>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
+import Image from "next/image";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faCircleUser,
@@ -164,16 +165,16 @@ export default function ProfileEditorModal({
         onClick={onClose}
       />
 
-      <div className="relative z-[101] flex h-[min(84vh,720px)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-[#1d2f4c] bg-[#07101f] shadow-[0_24px_60px_-24px_rgba(0,0,0,0.9)]">
-        <div className="flex items-center justify-between border-b border-[#1d2f4c] px-6 py-4">
+      <div className="glass-shell relative z-[101] flex h-[min(84vh,720px)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border shadow-[0_24px_60px_-24px_rgba(0,0,0,0.9)]">
+        <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <div className="flex items-center gap-3">
-            <FontAwesomeIcon icon={faCircleUser} className="h-5 w-5 text-slate-200" />
-            <h3 className="text-[2rem] font-semibold leading-none text-white">Account</h3>
+            <FontAwesomeIcon icon={faCircleUser} className="h-5 w-5 text-text" />
+            <h3 className="text-[2rem] font-semibold leading-none text-text">Account</h3>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-[#22395c] bg-[#091425] text-slate-400 transition hover:border-accent/35 hover:text-accent"
+            className="glass-field flex h-9 w-9 items-center justify-center rounded-full border text-muted transition hover:border-accent/35 hover:text-accent"
             aria-label="Close profile editor"
           >
             <FontAwesomeIcon icon={faXmark} className="h-4 w-4" />
@@ -183,8 +184,8 @@ export default function ProfileEditorModal({
         <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
           <section className={clsx(settingsPanelCard, "space-y-4 p-4")}>
             <div className="flex items-center gap-2">
-              <FontAwesomeIcon icon={faUserPen} className="h-4 w-4 text-slate-300" />
-              <h4 className="text-2xl font-semibold leading-none text-white">Account name</h4>
+              <FontAwesomeIcon icon={faUserPen} className="h-4 w-4 text-text" />
+              <h4 className="text-2xl font-semibold leading-none text-text">Account name</h4>
             </div>
 
             <div className="grid gap-3 md:grid-cols-2">
@@ -245,8 +246,8 @@ export default function ProfileEditorModal({
           <section className={clsx(settingsPanelCard, "space-y-3 p-4")}>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
-                <FontAwesomeIcon icon={faShieldHalved} className="h-4 w-4 text-slate-300" />
-                <h4 className="text-2xl font-semibold leading-none text-white">
+                <FontAwesomeIcon icon={faShieldHalved} className="h-4 w-4 text-text" />
+                <h4 className="text-2xl font-semibold leading-none text-text">
                   Two-factor authentication
                 </h4>
                 <span
@@ -254,7 +255,7 @@ export default function ProfileEditorModal({
                     "rounded-lg px-2.5 py-1 text-xs font-bold",
                     twoFactorEnabled
                       ? "bg-emerald-500/20 text-emerald-300"
-                      : "bg-slate-600/30 text-slate-300"
+                      : "bg-base/70 text-muted"
                   )}
                 >
                   {twoFactorEnabled ? "Active" : "Inactive"}
@@ -265,17 +266,17 @@ export default function ProfileEditorModal({
               </button>
             </div>
 
-            <p className="text-sm text-slate-400">
+            <p className="text-sm text-muted">
               Add an extra layer of security by enabling two-factor authentication.
             </p>
-            {twoFactorStatus ? <p className="text-xs text-slate-400">{twoFactorStatus}</p> : null}
+            {twoFactorStatus ? <p className="text-xs text-muted">{twoFactorStatus}</p> : null}
           </section>
 
           <section className={clsx(settingsPanelCard, "space-y-3 p-4")}>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
-                <FontAwesomeIcon icon={faKey} className="h-4 w-4 text-slate-300" />
-                <h4 className="text-2xl font-semibold leading-none text-white">Change password</h4>
+                <FontAwesomeIcon icon={faKey} className="h-4 w-4 text-text" />
+                <h4 className="text-2xl font-semibold leading-none text-text">Change password</h4>
               </div>
               <button
                 type="button"
@@ -285,15 +286,15 @@ export default function ProfileEditorModal({
                 Change Password
               </button>
             </div>
-            <p className="text-sm text-slate-400">
+            <p className="text-sm text-muted">
               Choose a new and secure password for your account here.
             </p>
           </section>
 
-          {profileStatus ? <p className="text-sm text-slate-300">{profileStatus}</p> : null}
+          {profileStatus ? <p className="text-sm text-muted">{profileStatus}</p> : null}
         </div>
 
-        <div className="flex justify-end gap-2 border-t border-[#1d2f4c] px-6 py-4">
+        <div className="flex justify-end gap-2 border-t border-border px-6 py-4">
           <button type="button" onClick={onClose} className={settingsMutedButton}>
             Close
           </button>
@@ -304,9 +305,9 @@ export default function ProfileEditorModal({
 
         {isTwoFactorPopupOpen ? (
           <div className="absolute inset-0 z-[130] flex items-center justify-center bg-[#020a16]/65 p-4 backdrop-blur-sm">
-            <div className="w-full max-w-lg max-h-[68vh] overflow-y-auto rounded-xl border border-[#1d2f4c] bg-[#07101f] p-3 shadow-[0_24px_50px_-28px_rgba(0,0,0,0.95)]">
+            <div className="glass-shell w-full max-w-lg max-h-[68vh] overflow-y-auto rounded-xl border p-3 shadow-[0_24px_50px_-28px_rgba(0,0,0,0.95)]">
               <div className="flex items-start justify-between gap-3">
-                <h5 className="text-xl font-semibold text-white">
+                <h5 className="text-xl font-semibold text-text">
                   {twoFactorEnabled ? "Disable 2FA" : "Enable 2FA"}
                 </h5>
                 <button
@@ -315,7 +316,7 @@ export default function ProfileEditorModal({
                     setManualKeyCopied(false);
                     setIsTwoFactorPopupOpen(false);
                   }}
-                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#22395c] bg-[#091425] text-slate-400 transition hover:border-accent/35 hover:text-accent"
+                  className="glass-field flex h-9 w-9 items-center justify-center rounded-xl border text-muted transition hover:border-accent/35 hover:text-accent"
                 >
                   <FontAwesomeIcon icon={faXmark} className="h-4 w-4" />
                 </button>
@@ -323,7 +324,7 @@ export default function ProfileEditorModal({
 
               {twoFactorEnabled ? (
                 <div className="mt-2.5 space-y-2.5">
-                  <p className="text-sm text-slate-300">
+                  <p className="text-sm text-text">
                     Enter your 2FA code to disable two-factor authentication.
                   </p>
                   <div className="flex flex-wrap gap-2">
@@ -342,7 +343,7 @@ export default function ProfileEditorModal({
                       Disable
                     </button>
                   </div>
-                  {twoFactorStatus ? <p className="text-sm text-slate-400">{twoFactorStatus}</p> : null}
+                  {twoFactorStatus ? <p className="text-sm text-muted">{twoFactorStatus}</p> : null}
                 </div>
               ) : (
                 <div className="mt-2.5 space-y-3">
@@ -350,20 +351,23 @@ export default function ProfileEditorModal({
                     <span className="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-500/30 text-sm font-semibold text-indigo-200">
                       1
                     </span>
-                    <p className="text-base font-semibold uppercase tracking-[0.08em] text-slate-100">Scan QR Code</p>
+                    <p className="text-base font-semibold uppercase tracking-[0.08em] text-text">Scan QR Code</p>
                   </div>
 
                   <div className="grid gap-3 md:grid-cols-[130px_minmax(0,1fr)]">
                     {twoFactorSetupSecret && otpUri ? (
                       <div className="w-fit overflow-hidden rounded-xl border border-white/20 bg-white p-2">
-                        <img
+                        <Image
                           src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(otpUri)}`}
                           alt="2FA QR Code"
+                          width={108}
+                          height={108}
+                          unoptimized
                           className="h-[108px] w-[108px]"
                         />
                       </div>
                     ) : null}
-                    <p className="max-w-md text-sm leading-relaxed text-slate-300">
+                    <p className="max-w-md text-sm leading-relaxed text-text">
                       Open your authenticator app and scan this image to link your account instantly.
                     </p>
                   </div>
@@ -373,18 +377,18 @@ export default function ProfileEditorModal({
                       <span className="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-500/20 text-sm font-semibold text-indigo-200">
                         2
                       </span>
-                      <p className="text-base font-semibold uppercase tracking-[0.08em] text-slate-100">Manual Entry</p>
+                      <p className="text-base font-semibold uppercase tracking-[0.08em] text-text">Manual Entry</p>
                     </div>
-                    <span className="rounded-full bg-slate-700/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">
+                    <span className="rounded-full bg-base/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">
                       Optional
                     </span>
                   </div>
 
-                  <div className="rounded-2xl border border-[#1d2f4c] bg-[#081427] p-3">
-                    <p className="mb-2 text-xs text-slate-400">
+                  <div className="rounded-2xl border border-border bg-base/60 p-3">
+                    <p className="mb-2 text-xs text-muted">
                       Use this key if you&apos;re unable to scan the QR code.
                     </p>
-                    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[#22395c] bg-[#091425] p-2">
+                    <div className="glass-field flex flex-wrap items-center gap-2 rounded-xl border p-2">
                         <p className="min-w-0 flex-1 break-all font-mono text-[13px] text-accent">
                           {twoFactorSetupSecret ?? "Loading key..."}
                         </p>
@@ -402,7 +406,7 @@ export default function ProfileEditorModal({
                     <span className="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-500/30 text-sm font-semibold text-indigo-200">
                       3
                     </span>
-                      <p className="text-base font-semibold uppercase tracking-[0.08em] text-slate-100">Verify Code</p>
+                      <p className="text-base font-semibold uppercase tracking-[0.08em] text-text">Verify Code</p>
                   </div>
 
                   <div className="flex flex-wrap gap-2">
@@ -423,7 +427,7 @@ export default function ProfileEditorModal({
                   </div>
 
                   {twoFactorStatus && twoFactorStatus !== defaultTwoFactorHint ? (
-                    <p className="text-sm text-slate-400">{twoFactorStatus}</p>
+                    <p className="text-sm text-muted">{twoFactorStatus}</p>
                   ) : null}
                 </div>
               )}
@@ -433,9 +437,9 @@ export default function ProfileEditorModal({
 
         {isPasswordPopupOpen ? (
           <div className="absolute inset-0 z-[130] flex items-center justify-center bg-[#020a16]/65 p-4 backdrop-blur-sm">
-            <div className="w-full max-w-lg rounded-xl border border-[#1d2f4c] bg-[#07101f] p-4 shadow-[0_24px_50px_-28px_rgba(0,0,0,0.95)]">
+            <div className="glass-shell w-full max-w-lg rounded-xl border p-4 shadow-[0_24px_50px_-28px_rgba(0,0,0,0.95)]">
               <div className="flex items-start justify-between gap-3">
-                <h5 className="text-4xl font-semibold text-white">Change password</h5>
+                <h5 className="text-4xl font-semibold text-text">Change password</h5>
                 <button
                   type="button"
                   onClick={() => {
@@ -444,13 +448,13 @@ export default function ProfileEditorModal({
                     setNewPasswordDraft("");
                     setConfirmPasswordDraft("");
                   }}
-                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#22395c] bg-[#091425] text-slate-400 transition hover:border-accent/35 hover:text-accent"
+                  className="glass-field flex h-9 w-9 items-center justify-center rounded-xl border text-muted transition hover:border-accent/35 hover:text-accent"
                 >
                   <FontAwesomeIcon icon={faXmark} className="h-4 w-4" />
                 </button>
               </div>
 
-              <p className="mt-3 text-2xl font-medium leading-tight text-slate-300">
+              <p className="mt-3 text-2xl font-medium leading-tight text-text">
                 A strong password contains special characters, numbers, and letters in both uppercase
                 and lowercase.
               </p>
@@ -475,12 +479,12 @@ export default function ProfileEditorModal({
               {passwordPopupStatus ? (
                 <p className="mt-3 text-sm text-rose-300">{passwordPopupStatus}</p>
               ) : null}
-              {profileStatus ? <p className="mt-2 text-sm text-slate-400">{profileStatus}</p> : null}
+              {profileStatus ? <p className="mt-2 text-sm text-muted">{profileStatus}</p> : null}
 
               <button
                 type="button"
                 onClick={submitPasswordChange}
-                className="mt-4 h-12 w-full rounded-xl bg-[#1a2a61] text-lg font-semibold text-white transition hover:brightness-110"
+                className="mt-4 h-12 w-full rounded-xl bg-accent text-lg font-semibold text-on-accent transition hover:brightness-110"
               >
                 Change password
               </button>

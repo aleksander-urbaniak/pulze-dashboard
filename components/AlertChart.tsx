@@ -47,7 +47,27 @@ export default function AlertChart({ data }: { data: TrendDatum[] }) {
   const gradientId = useId().replace(/:/g, "");
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const [displayedValues, setDisplayedValues] = useState<number[]>(() => data.map(() => 0));
+  const [colors, setColors] = useState({ accent: "rgb(20 241 217)", border: "rgb(27 47 77)" });
   const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const updateColors = () => {
+      const root = document.documentElement;
+      const accentVar = getComputedStyle(root).getPropertyValue("--accent").trim();
+      const borderVar = getComputedStyle(root).getPropertyValue("--border").trim();
+      setColors({
+        accent: `rgb(${accentVar})`,
+        border: `rgb(${borderVar})`
+      });
+    };
+
+    updateColors();
+
+    const observer = new MutationObserver(updateColors);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const targetValues = data.map((item) => item.value);
@@ -129,17 +149,17 @@ export default function AlertChart({ data }: { data: TrendDatum[] }) {
       >
         <defs>
           <linearGradient id={`${gradientId}-fill`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="rgb(var(--accent))" stopOpacity="0.35" />
-            <stop offset="100%" stopColor="rgb(var(--accent))" stopOpacity="0" />
+            <stop offset="0%" stopColor={colors.accent} stopOpacity="0.35" />
+            <stop offset="100%" stopColor={colors.accent} stopOpacity="0" />
           </linearGradient>
         </defs>
-        <path d={`M ${PADDING_X} ${baseline} H ${CHART_WIDTH - PADDING_X}`} stroke="rgb(var(--border))" />
+        <path d={`M ${PADDING_X} ${baseline} H ${CHART_WIDTH - PADDING_X}`} stroke={colors.border} />
         {areaPath ? <path d={areaPath} fill={`url(#${gradientId}-fill)`} stroke="none" /> : null}
         {linePath ? (
           <path
             d={linePath}
             fill="none"
-            stroke="rgb(var(--accent))"
+            stroke={colors.accent}
             strokeWidth="2.5"
             strokeLinecap="round"
           />
@@ -151,7 +171,7 @@ export default function AlertChart({ data }: { data: TrendDatum[] }) {
             cy={point.y}
             r={hoverIndex === index ? 5 : 3.5}
             fill="rgb(var(--surface))"
-            stroke="rgb(var(--accent))"
+            stroke={colors.accent}
             strokeWidth="2"
             onMouseEnter={() => setHoverIndex(index)}
             onFocus={() => setHoverIndex(index)}
