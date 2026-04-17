@@ -55,7 +55,7 @@ export default function AlertsCardsView({
       />
       <div className={styles.cardGrid}>
         {alerts.length === 0 ? (
-          <div className="col-span-full rounded-xl border border-[#1a2d4a] bg-[#070f1b]/85 p-6 text-center text-sm text-slate-400">
+          <div className="col-span-full rounded-xl border border-border bg-base/60 p-6 text-center text-sm text-muted">
             No alerts match your filters.
           </div>
         ) : (
@@ -103,14 +103,14 @@ export default function AlertsCardsView({
                   className={clsx(
                     "absolute right-4 top-4 flex h-5 w-5 items-center justify-center rounded-md border text-[10px]",
                     isSelected
-                      ? "border-cyan-300 bg-cyan-300 text-[#03161a]"
-                      : "border-[#1d2f4c] bg-[#081325] text-slate-400"
+                      ? "border-accent/35 selected-soft"
+                      : "border-border bg-base/60 text-muted"
                   )}
                 >
                   {isSelected ? "✓" : ""}
                 </button>
                 {alert.groupSize && alert.groupSize > 1 ? (
-                  <span className="absolute right-12 top-4 rounded-full border border-[#1d2f4c] bg-[#081325] px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] text-slate-300">
+                  <span className="absolute right-12 top-4 rounded-full border border-border bg-base/80 px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] text-text/80">
                     x{alert.groupSize}
                   </span>
                 ) : null}
@@ -119,7 +119,7 @@ export default function AlertsCardsView({
                     <span className={styles.severityDot} />
                     {alert.severity}
                   </p>
-                  <span className="max-w-[60%] truncate rounded-lg border border-[#1d2f4c] bg-[#081325] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-300">
+                  <span className="max-w-[60%] truncate rounded-lg border border-border bg-base/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-text/80">
                     {instanceLabel}
                   </span>
                 </div>
@@ -135,11 +135,11 @@ export default function AlertsCardsView({
                     {alert.ackStatus}
                   </span>
                 ) : null}
-                <h3 className="mt-4 text-[1.35rem] font-semibold leading-tight text-slate-100 break-words">
+                <h3 className="mt-4 break-words text-[1.35rem] font-semibold leading-tight text-text">
                   {alertSourceUrl ? (
                     <a
                       href={alertSourceUrl}
-                      className="text-slate-100 hover:text-cyan-300"
+                      className="text-text hover:text-accent"
                       onClick={(event) => event.stopPropagation()}
                     >
                       {alert.name}
@@ -149,15 +149,15 @@ export default function AlertsCardsView({
                   )}
                 </h3>
                 {alert.instance ? (
-                  <p className="mt-1.5 text-[11px] uppercase tracking-[0.16em] text-slate-500 break-words">
+                  <p className="mt-1.5 break-words text-[11px] uppercase tracking-[0.16em] text-muted">
                     {alert.instance}
                   </p>
                 ) : null}
-                <p className="mt-2.5 text-[13px] leading-relaxed text-slate-400 break-words">{alert.message}</p>
+                <p className="mt-2.5 break-words text-[13px] leading-relaxed text-muted">{alert.message}</p>
                 {notePreview && !isExpanded ? (
                   <p className={styles.cardNotePreview}>Note: {notePreview}</p>
                 ) : null}
-                <div className="mt-5 flex items-center justify-between border-t border-[#15243d] pt-3 text-[10px] text-slate-500">
+                <div className="mt-5 flex items-center justify-between border-t border-border pt-3 text-[10px] text-muted">
                   <div className="flex items-center gap-1.5">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
                       <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.7" />
@@ -172,7 +172,7 @@ export default function AlertsCardsView({
                         event.stopPropagation();
                         onToggleExpanded(alert.id);
                       }}
-                      className="rounded-md border border-transparent p-1.5 text-slate-500 hover:border-[#1d2f4c] hover:text-cyan-300"
+                      className="rounded-md border border-transparent p-1.5 text-muted hover:border-border hover:text-accent"
                       title="View details"
                     >
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
@@ -193,7 +193,7 @@ export default function AlertsCardsView({
                         onUpdateAlertState(alert.id, "resolved");
                       }}
                       disabled={!canAcknowledge}
-                      className="rounded-md border border-transparent p-1.5 text-slate-500 hover:border-[#1d2f4c] hover:text-rose-300 disabled:opacity-50"
+                      className="rounded-md border border-transparent p-1.5 text-muted hover:border-border hover:text-rose-400 disabled:opacity-50"
                       title="Resolve alert"
                     >
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
@@ -213,18 +213,18 @@ export default function AlertsCardsView({
                   onClick={(event) => event.stopPropagation()}
                   aria-hidden={!isExpanded}
                 >
-                  <div className="rounded-xl border border-[#1a2d4a] bg-[#060e1c]/95 p-4">
+                  <div className="rounded-xl border border-border bg-base/70 p-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
-                        <p className="text-xs uppercase tracking-[0.2em] text-slate-500">Status</p>
-                        <p className="mt-2 text-sm font-semibold capitalize text-slate-200">{alertStatus}</p>
+                        <p className="text-xs uppercase tracking-[0.2em] text-muted">Status</p>
+                        <p className="mt-2 text-sm font-semibold capitalize text-text">{alertStatus}</p>
                       </div>
                       <div className="flex flex-wrap items-center gap-2">
                         <button
                           type="button"
                           onClick={() => onUpdateAlertState(alert.id, "acknowledged")}
                           disabled={!canAcknowledge}
-                          className="rounded-xl border border-[#1d2f4c] bg-[#071021] px-3 py-1 text-xs uppercase tracking-[0.2em] text-slate-200"
+                          className="rounded-xl border border-border bg-base/80 px-3 py-1 text-xs uppercase tracking-[0.2em] text-text"
                         >
                           Acknowledge
                         </button>
@@ -232,7 +232,7 @@ export default function AlertsCardsView({
                           type="button"
                           onClick={() => onUpdateAlertState(alert.id, "resolved")}
                           disabled={!canAcknowledge}
-                          className="rounded-xl border border-emerald-400/40 bg-emerald-400/90 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-[#02110d]"
+                          className="rounded-xl border border-accent/40 bg-accent px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-on-accent"
                         >
                           Resolve
                         </button>
@@ -241,7 +241,7 @@ export default function AlertsCardsView({
                             type="button"
                             onClick={() => onUpdateAlertState(alert.id, "active")}
                             disabled={!canAcknowledge}
-                            className="rounded-xl border border-[#1d2f4c] bg-[#071021] px-3 py-1 text-xs uppercase tracking-[0.2em] text-slate-400"
+                            className="rounded-xl border border-border bg-base/80 px-3 py-1 text-xs uppercase tracking-[0.2em] text-muted"
                           >
                             Reopen
                           </button>
@@ -249,18 +249,18 @@ export default function AlertsCardsView({
                       </div>
                     </div>
                     <div className="mt-4 space-y-2">
-                      <label className="text-xs uppercase tracking-[0.2em] text-slate-500">Note</label>
+                      <label className="text-xs uppercase tracking-[0.2em] text-muted">Note</label>
                       <textarea
                         value={alertNoteDraft}
                         onChange={(event) => onAlertNoteChange(event.target.value)}
                         placeholder="Add acknowledgment notes..."
-                        className="h-24 w-full rounded-xl border border-[#1d2f4c] bg-[#071021] px-3 py-2 text-sm text-slate-200"
+                        className="h-24 w-full rounded-xl border border-border bg-base/80 px-3 py-2 text-sm text-text"
                       />
                       <button
                         type="button"
                         onClick={() => onUpdateAlertState(alert.id, alertStatus)}
                         disabled={!canAcknowledge}
-                        className="rounded-xl border border-[#1d2f4c] bg-[#071021] px-4 py-2 text-xs uppercase tracking-[0.2em] text-slate-200"
+                        className="rounded-xl border border-border bg-base/80 px-4 py-2 text-xs uppercase tracking-[0.2em] text-text"
                       >
                         Save Note
                       </button>

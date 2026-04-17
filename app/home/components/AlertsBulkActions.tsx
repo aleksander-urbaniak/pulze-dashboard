@@ -37,7 +37,7 @@ export default function AlertsBulkActions({
   };
 
   return (
-    <div className="mt-4 grid items-center gap-3 px-1 py-1 text-xs uppercase tracking-[0.18em] text-[#60748e] dark:text-slate-400 sm:px-0 lg:grid-cols-[1fr_auto_1fr]">
+    <div className="mt-4 grid items-center gap-3 px-1 py-1 text-xs uppercase tracking-[0.18em] text-muted sm:px-0 lg:grid-cols-[1fr_auto_1fr]">
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
@@ -46,7 +46,7 @@ export default function AlertsBulkActions({
         >
           {allSelected ? "Clear all" : "Select all"}
         </button>
-        <span className="text-xs uppercase tracking-[0.2em] text-[#60748e] dark:text-slate-400">
+        <span className="text-xs uppercase tracking-[0.2em] text-muted">
           {hasSelection ? `${selectedAlertIds.size} selected` : `${filteredAlerts.length} total`}
         </span>
       </div>
@@ -83,7 +83,7 @@ export default function AlertsBulkActions({
           type="button"
           disabled={!hasSelection || !canAcknowledge}
           onClick={() => onBulkUpdate("resolved")}
-          className="rounded-xl border border-emerald-400/35 bg-emerald-400/90 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-[#02110d] hover:bg-emerald-300 disabled:opacity-50"
+          className="rounded-xl border border-accent/35 bg-accent px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-on-accent hover:brightness-110 disabled:opacity-50"
         >
           Resolve selected
         </button>

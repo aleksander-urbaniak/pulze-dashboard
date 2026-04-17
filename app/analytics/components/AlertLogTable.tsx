@@ -115,7 +115,7 @@ export default function AlertLogTable({
                   <td className="px-4 py-3 text-muted">{alert.instance || "-"}</td>
                   <td className="px-4 py-3">
                     {alertSourceUrl ? (
-                      <a href={alertSourceUrl} className="text-cyan-300 hover:underline">
+                      <a href={alertSourceUrl} className="text-accent hover:underline">
                         {alert.name}
                       </a>
                     ) : (

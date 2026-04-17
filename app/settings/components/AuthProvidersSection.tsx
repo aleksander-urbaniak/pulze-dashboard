@@ -44,7 +44,7 @@ function Field({
     <label className="block space-y-2">
       <span className={settingsLabelClass}>{label}</span>
       <div className="relative">
-        <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-500">
+        <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-muted">
           {icon}
         </span>
         {children}
@@ -73,7 +73,7 @@ export default function AuthProvidersSection({
         <div className="mb-5 flex items-start justify-between gap-4">
           <div>
             <h3 className="text-xl font-semibold text-text leading-none">Authentication Provider</h3>
-            <p className="mt-2 text-sm text-slate-400">SAML SSO configuration</p>
+            <p className="mt-2 text-sm text-muted">SAML SSO configuration</p>
           </div>
           <div
             className={clsx(
@@ -227,11 +227,11 @@ export default function AuthProvidersSection({
                   saml: { ...prev.saml, enabled: !prev.saml.enabled }
                 }))
               }
-              className="inline-flex items-center gap-2 text-sm font-semibold text-slate-200"
+              className="inline-flex items-center gap-2 text-sm font-semibold text-text"
             >
               <FontAwesomeIcon
                 icon={authDraft.saml.enabled ? faToggleOn : faToggleOff}
-                className={clsx("h-5 w-5", authDraft.saml.enabled ? "text-accent" : "text-slate-500")}
+                className={clsx("h-5 w-5", authDraft.saml.enabled ? "text-accent" : "text-muted")}
               />
               Enable SAML SSO
             </button>
@@ -244,13 +244,13 @@ export default function AuthProvidersSection({
                   saml: { ...prev.saml, autoProvision: !prev.saml.autoProvision }
                 }))
               }
-              className="inline-flex items-center gap-2 text-sm font-semibold text-slate-200"
+              className="inline-flex items-center gap-2 text-sm font-semibold text-text"
             >
               <FontAwesomeIcon
                 icon={authDraft.saml.autoProvision ? faToggleOn : faToggleOff}
                 className={clsx(
                   "h-5 w-5",
-                  authDraft.saml.autoProvision ? "text-accent" : "text-slate-500"
+                  authDraft.saml.autoProvision ? "text-accent" : "text-muted"
                 )}
               />
               Auto-provision users
@@ -258,7 +258,7 @@ export default function AuthProvidersSection({
           </div>
         </div>
 
-        {authStatus ? <p className="mt-4 text-sm text-slate-300">{authStatus}</p> : null}
+        {authStatus ? <p className="mt-4 text-sm text-muted">{authStatus}</p> : null}
       </div>
 
       <div className="flex justify-end">

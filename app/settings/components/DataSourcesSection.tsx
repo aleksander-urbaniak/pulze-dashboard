@@ -332,7 +332,7 @@ export default function DataSourcesSection({
                   type="button"
                   onClick={openWizard}
                   disabled={!canEditSettings}
-                  className="text-xl leading-none text-accent"
+                  className="text-xl leading-none text-text"
                   title="Add new data source"
                 >
                   +
@@ -341,7 +341,7 @@ export default function DataSourcesSection({
             </div>
             <div className="space-y-2 px-3 pb-4">
               {sourceEntries.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-[#1e2530] px-4 py-6 text-sm text-slate-500">
+                <div className="rounded-xl border border-dashed border-border px-4 py-6 text-sm text-muted">
                   Add a source to start configuring integrations.
                 </div>
               ) : (
@@ -362,16 +362,16 @@ export default function DataSourcesSection({
                       className={clsx(
                         "block w-full cursor-pointer rounded-xl border px-3 py-3 text-left transition-colors",
                         isSelected
-                          ? "border-accent/45 bg-accent/10"
-                          : "border-transparent bg-transparent hover:bg-white/5"
+                          ? "border-accent/35 selected-soft"
+                          : "border-transparent bg-transparent hover:bg-base/40"
                       )}
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-slate-100">
+                          <p className="truncate text-sm font-semibold text-text">
                             {sourceLabel(entry)}
                           </p>
-                          <p className="mt-1 text-[10px] uppercase tracking-[0.18em] text-slate-500">
+                          <p className="mt-1 text-[10px] uppercase tracking-[0.18em] text-muted">
                             {sourceTypeLabel(entry.kind)}
                           </p>
                         </div>
@@ -383,7 +383,7 @@ export default function DataSourcesSection({
                               deleteSource(entry);
                             }}
                             disabled={!canEditSettings}
-                            className="rounded-lg p-1.5 text-slate-500 transition hover:bg-rose-500/10 hover:text-rose-300 disabled:cursor-not-allowed disabled:opacity-40"
+                            className="rounded-lg p-1.5 text-muted transition hover:bg-rose-500/10 hover:text-rose-300 disabled:cursor-not-allowed disabled:opacity-40"
                             title={`Delete ${sourceLabel(entry)}`}
                             aria-label={`Delete ${sourceLabel(entry)}`}
                           >
@@ -392,7 +392,7 @@ export default function DataSourcesSection({
                           <span
                             className={clsx(
                               "h-1.5 w-1.5 rounded-full",
-                              isSelected ? "bg-accent" : "bg-slate-500"
+                              isSelected ? "bg-accent" : "bg-muted"
                             )}
                           />
                         </div>
@@ -408,7 +408,7 @@ export default function DataSourcesSection({
         <div className="px-0 py-0">
           {selectedEntry ? (
             <div className="w-full">
-              {settingsStatus ? <p className="mb-4 text-sm text-slate-400">{settingsStatus}</p> : null}
+              {settingsStatus ? <p className="mb-4 text-sm text-muted">{settingsStatus}</p> : null}
               {hasInvalidLabels ? (
                 <p className="mb-4 text-sm text-rose-400">
                   Every configured source needs a display label before saving.
@@ -551,7 +551,7 @@ export default function DataSourcesSection({
 
                 <div className={clsx(settingsPanelCard, "p-5 lg:p-6")}>
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-white">
+                    <h3 className="text-sm font-bold uppercase tracking-[0.12em] text-text">
                       Validation
                     </h3>
                     <div className="flex flex-wrap gap-2">
@@ -571,18 +571,18 @@ export default function DataSourcesSection({
                         "mt-4 rounded-xl border px-4 py-3 text-sm",
                         selectedTest.status === "error"
                           ? "border-rose-500/35 bg-rose-500/10 text-rose-300"
-                          : "border-[#1d2f4c] bg-[#07101f] text-slate-300"
+                          : "border-border bg-base/60 text-text"
                       )}
                     >
                       <p>{selectedTest.message}</p>
                       {selectedTest.sampleLine ? (
-                        <p className="mt-2 font-mono text-xs text-slate-400">
+                        <p className="mt-2 font-mono text-xs text-muted">
                           {selectedTest.sampleLine}
                         </p>
                       ) : null}
                     </div>
                   ) : (
-                    <p className="mt-4 text-sm text-slate-500">
+                    <p className="mt-4 text-sm text-muted">
                       Test the selected endpoint to confirm connectivity and credentials.
                     </p>
                   )}
@@ -620,11 +620,11 @@ export default function DataSourcesSection({
             onClick={closeWizard}
           />
 
-          <div className="relative z-[91] w-full max-w-2xl rounded-2xl border border-[#1d2f4c] bg-[#07101f] shadow-[0_24px_60px_-24px_rgba(0,0,0,0.9)]">
-            <div className="flex items-start justify-between gap-4 border-b border-[#1d2f4c] px-5 py-4">
+          <div className="glass-shell relative z-[91] w-full max-w-2xl rounded-2xl border shadow-[0_24px_60px_-24px_rgba(0,0,0,0.9)]">
+            <div className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
               <div>
                 <p className={settingsLabelClass}>Add Data Source</p>
-                <h3 className="mt-1 text-lg font-semibold text-white">
+                <h3 className="mt-1 text-lg font-semibold text-text">
                   Step {wizardStep} of 3
                 </h3>
               </div>
@@ -646,8 +646,8 @@ export default function DataSourcesSection({
                     className={clsx(
                       "rounded-lg border px-3 py-2 text-center text-[10px] font-bold uppercase tracking-[0.15em]",
                       wizardStep === step
-                        ? "border-accent/40 bg-accent/10 text-accent"
-                        : "border-[#1d2f4c] bg-[#091425] text-slate-500"
+                        ? "border-accent/35 selected-soft"
+                        : "border-border bg-base/60 text-muted"
                     )}
                   >
                     Step {step}
@@ -657,7 +657,7 @@ export default function DataSourcesSection({
 
               {wizardStep === 1 ? (
                 <div className="space-y-3">
-                  <p className="text-sm text-slate-400">Choose which source you want to add.</p>
+                  <p className="text-sm text-muted">Choose which source you want to add.</p>
                   <div className="grid gap-3 md:grid-cols-3">
                     {[
                       {
@@ -683,12 +683,12 @@ export default function DataSourcesSection({
                         className={clsx(
                           "rounded-xl border p-4 text-left transition",
                           wizardKind === option.kind
-                            ? "border-accent/45 bg-accent/10"
-                            : "border-[#1d2f4c] bg-[#091425] hover:border-accent/30"
+                            ? "border-accent/35 selected-soft"
+                            : "border-border bg-base/60 hover:border-accent/30"
                         )}
                       >
-                        <p className="text-sm font-semibold text-white">{option.label}</p>
-                        <p className="mt-2 text-xs text-slate-500">{option.description}</p>
+                        <p className="text-sm font-semibold text-text">{option.label}</p>
+                        <p className="mt-2 text-xs text-muted">{option.description}</p>
                       </button>
                     ))}
                   </div>
@@ -697,7 +697,7 @@ export default function DataSourcesSection({
 
               {wizardStep === 2 && wizardSource ? (
                 <div className="space-y-5">
-                  <p className="text-sm text-slate-400">
+                  <p className="text-sm text-muted">
                     Provide connection details for the selected source.
                   </p>
 
@@ -817,19 +817,19 @@ export default function DataSourcesSection({
 
               {wizardStep === 3 && wizardSource && wizardKind ? (
                 <div className="space-y-5">
-                  <div className="rounded-xl border border-[#1d2f4c] bg-[#091425] p-4">
+                  <div className="rounded-xl border border-border bg-base/60 p-4">
                     <p className={settingsLabelClass}>Summary</p>
-                    <p className="mt-2 text-sm font-semibold text-white">
+                    <p className="mt-2 text-sm font-semibold text-text">
                       {wizardSource.name.trim() || `Untitled ${wizardKind}`}
                     </p>
-                    <p className="mt-1 text-sm text-slate-400">
+                    <p className="mt-1 text-sm text-muted">
                       {sourceTypeLabel(wizardKind)} • {wizardSourceUrl || "No URL provided"}
                     </p>
                   </div>
 
                   <div className={clsx(settingsPanelCard, "p-4")}>
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-sm font-bold uppercase tracking-[0.12em] text-white">
+                      <p className="text-sm font-bold uppercase tracking-[0.12em] text-text">
                         Step 3: Test & Save
                       </p>
                       <button
@@ -850,16 +850,16 @@ export default function DataSourcesSection({
                             ? "border-rose-500/35 bg-rose-500/10 text-rose-300"
                             : wizardTest.status === "success"
                               ? "border-emerald-500/35 bg-emerald-500/10 text-emerald-200"
-                              : "border-[#1d2f4c] bg-[#07101f] text-slate-300"
+                              : "border-border bg-base/60 text-text"
                         )}
                       >
                         <p>{wizardTest.message}</p>
                         {wizardTest.sampleLine ? (
-                          <p className="mt-2 font-mono text-xs text-slate-400">{wizardTest.sampleLine}</p>
+                          <p className="mt-2 font-mono text-xs text-muted">{wizardTest.sampleLine}</p>
                         ) : null}
                       </div>
                     ) : (
-                      <p className="mt-4 text-sm text-slate-500">
+                      <p className="mt-4 text-sm text-muted">
                         Run a connection test, then save this source.
                       </p>
                     )}
@@ -868,7 +868,7 @@ export default function DataSourcesSection({
               ) : null}
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#1d2f4c] px-5 py-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-5 py-4">
               <button
                 type="button"
                 onClick={closeWizard}

@@ -54,6 +54,15 @@ Stop:
 docker compose down
 ```
 
+Container admin CLI:
+
+```bash
+docker compose exec pulze-dashboard pulze help
+docker compose exec pulze-dashboard pulze users ls
+docker compose exec pulze-dashboard pulze passwd admin NewStrongPassword123
+docker compose exec pulze-dashboard pulze users create --username ops --password OpsPassword123 --role operator --first-name Ops --last-name User --email ops@example.com
+```
+
 ## Run from Local Source
 
 Requirements:

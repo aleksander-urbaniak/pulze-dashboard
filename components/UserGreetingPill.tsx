@@ -19,7 +19,7 @@ export default function UserGreetingPill({ user }: UserGreetingPillProps) {
       <span className="text-[11px] font-semibold uppercase tracking-[0.11em] text-text">
         Hello, {user.firstName}!
       </span>
-      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-[rgb(var(--base))]">
+      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-on-accent">
         {initials}
       </span>
     </div>
