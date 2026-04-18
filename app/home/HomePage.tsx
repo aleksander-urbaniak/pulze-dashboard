@@ -328,6 +328,8 @@ export default function HomePage() {
       if (disappearedEventsBatch.length > 0) {
         setDisappearedEvents((prev) => [...disappearedEventsBatch, ...prev].slice(0, 500));
       }
+    } else {
+      setNotifications(data.alerts.slice(0, 20));
     }
     lastAlertIdsRef.current = currentIds;
     lastAlertsByKeyRef.current = currentMap;

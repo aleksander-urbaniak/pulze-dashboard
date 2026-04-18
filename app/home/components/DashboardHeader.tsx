@@ -4,6 +4,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faGaugeHigh } from "@fortawesome/free-solid-svg-icons";
 
 import type { Alert, User } from "../../../lib/types";
+import UserGreetingPill from "../../../components/UserGreetingPill";
 import styles from "../../page.module.css";
 
 type DashboardHeaderProps = {
@@ -172,14 +173,6 @@ export default function DashboardHeader({
     return Math.max(0, Math.min(99, Math.round(raw)));
   }, [activeLastHour, criticalCount, warningCount]);
 
-  const notificationTitle = useMemo(() => {
-    if (newAlertCount > 0) {
-      return `${newAlertCount} new alerts`;
-    }
-    return "No new alerts";
-  }, [newAlertCount]);
-
-  const initials = `${user.firstName?.[0] ?? ""}${user.lastName?.[0] ?? ""}`.toUpperCase() || "U";
   const summaryCards = [
     {
       label: "Active Alerts",
@@ -260,107 +253,15 @@ export default function DashboardHeader({
           <h2 className="text-[2.2rem] font-semibold leading-none text-text">Dashboard</h2>
         </div>
         <div ref={notificationsRef} className="relative z-40">
-          <div className="inline-flex items-center gap-2.5 rounded-full border border-border bg-surface/90 px-3.5 py-2 shadow-card">
-            <button
-              type="button"
-              onClick={onToggleNotifications}
-              aria-label="Notifications"
-              aria-haspopup="menu"
-              aria-expanded={isNotificationsOpen}
-              title={notificationTitle}
-              className="relative text-muted hover:text-accent"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                <path
-                  d="M6 9a6 6 0 1 1 12 0c0 3.2 1.2 4.6 2 5.4H4c.8-.8 2-2.2 2-5.4Z"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                <path
-                  d="M9.5 19a2.5 2.5 0 0 0 5 0"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                />
-              </svg>
-              {newAlertCount > 0 ? (
-                <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-rose-500" />
-              ) : null}
-            </button>
-            <span className="text-[11px] font-semibold uppercase tracking-[0.11em] text-text">
-              Hello, {user.firstName}!
-            </span>
-            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-on-accent">
-              {initials}
-            </span>
-          </div>
-          <div
-            className={clsx(
-              "absolute right-0 mt-3 w-[min(18rem,calc(100vw-2rem))] origin-top-right rounded-xl border border-border bg-surface/95 p-3.5 text-text shadow-[0_24px_44px_-30px_rgba(0,0,0,0.25)] backdrop-blur z-50 transition duration-200 ease-in-out dark:shadow-[0_24px_44px_-30px_rgba(0,0,0,0.95)]",
-              isNotificationsOpen
-                ? "visible pointer-events-auto translate-y-0 scale-100 opacity-100"
-                : "invisible pointer-events-none -translate-y-1 scale-95 opacity-0"
-            )}
-            aria-hidden={!isNotificationsOpen}
-          >
-            <div className="flex items-center justify-between">
-              <p className="text-xs uppercase tracking-[0.2em] text-muted">Notifications</p>
-              {notifications.length > 0 ? (
-                <button
-                  type="button"
-                  onClick={onClearNotifications}
-                  className="text-xs uppercase tracking-[0.2em] text-muted"
-                >
-                  Clear
-                </button>
-              ) : null}
-            </div>
-            {notifications.length === 0 ? (
-              <p className="mt-3 text-sm text-muted">No new alerts yet.</p>
-            ) : (
-              <div className="mt-3 space-y-3">
-                {notifications.map((alert) => {
-                  const alertSourceUrl = getAlertSourceUrl(alert);
-                  return (
-                    <div
-                      key={`notify-${alert.id}`}
-                      className="rounded-lg border border-border bg-base/40 px-3 py-2"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-semibold text-text">
-                          {alertSourceUrl ? (
-                            <a href={alertSourceUrl} className="text-accent hover:underline">
-                              {alert.name}
-                            </a>
-                          ) : (
-                            alert.name
-                          )}
-                        </span>
-                        <span
-                          className={clsx(
-                            "rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.2em]",
-                            alert.severity === "critical"
-                              ? "bg-rose-500/15 text-rose-400"
-                              : alert.severity === "warning"
-                                ? "bg-amber-400/20 text-amber-300"
-                                : "bg-emerald-400/15 text-emerald-300"
-                          )}
-                        >
-                          {alert.severity}
-                        </span>
-                      </div>
-                      <div className="mt-2 flex items-center justify-between text-xs text-muted">
-                        <span>{alert.sourceLabel || alert.source}</span>
-                        <span>{new Date(alert.timestamp).toLocaleString()}</span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+          <UserGreetingPill
+            user={user}
+            notifications={notifications}
+            newAlertCount={newAlertCount}
+            isNotificationsOpen={isNotificationsOpen}
+            onToggleNotifications={onToggleNotifications}
+            onClearNotifications={onClearNotifications}
+            getAlertSourceUrl={getAlertSourceUrl}
+          />
         </div>
       </div>
       <div className={styles.kpiGrid}>

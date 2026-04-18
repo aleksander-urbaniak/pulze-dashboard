@@ -2,6 +2,7 @@ import clsx from "clsx";
 import { useTheme } from "next-themes";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faBrush } from "@fortawesome/free-solid-svg-icons";
+import { useState } from "react";
 
 import PageSectionHeader from "../../../components/PageSectionHeader";
 import { defaultAppearance } from "../../../lib/appearance";
@@ -50,6 +51,20 @@ function mixHex(baseHex: string, targetHex: string, ratio: number) {
       .padStart(2, "0");
   });
   return `#${channels.join("").toUpperCase()}`;
+}
+
+function getOnAccentTextColor(value: string) {
+  const normalized = value.replace("#", "");
+  const hex =
+    normalized.length === 3
+      ? normalized
+          .split("")
+          .map((char) => char + char)
+          .join("")
+      : normalized;
+  const [red, green, blue] = [0, 2, 4].map((index) => parseInt(hex.slice(index, index + 2), 16));
+  const luminance = (0.299 * red + 0.587 * green + 0.114 * blue) / 255;
+  return luminance > 0.68 ? "#000000" : "#FFFFFF";
 }
 
 function Slider({
@@ -109,6 +124,7 @@ export default function AppearanceSection({
   onSetTheme
 }: AppearanceSectionProps) {
   const { resolvedTheme } = useTheme();
+  const [isPreviewButtonHovered, setIsPreviewButtonHovered] = useState(false);
   const isDarkTheme = resolvedTheme !== "light";
   const palette = isDarkTheme ? settingsDraft.appearance.dark : settingsDraft.appearance.light;
   const radius = settingsDraft.appearance.background.radius;
@@ -126,6 +142,8 @@ export default function AppearanceSection({
     : `linear-gradient(135deg, ${mixHex(palette.accent, "#FFFFFF", 0.82)} 0%, ${mixHex(palette.surface, palette.base, 0.08)} 100%)`;
   const previewAccentGlow = `${palette.accent}2E`;
   const previewMutedBg = `${palette.muted}18`;
+  const previewOnAccentText = getOnAccentTextColor(palette.accent);
+  const previewHoverAccent = mixHex(palette.accent, "#000000", 0.16);
 
   function handleAccentChange(value: string) {
     onUpdateAppearance("dark", "accent", value);
@@ -365,13 +383,10 @@ export default function AppearanceSection({
                     boxShadow: `0 18px 34px -24px ${previewAccentGlow}`
                   }}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-[10px] font-bold uppercase tracking-[0.22em]" style={{ color: palette.muted }}>
-                        Workspace Health
-                      </p>
-                      <h4 className="mt-2 text-xl font-bold" style={{ color: palette.text }}>{appName}</h4>
-                    </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.22em]" style={{ color: palette.muted }}>
+                      Workspace Health
+                    </p>
                     <div
                       className="rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.18em]"
                       style={{ backgroundColor: `${palette.surface}B8`, color: palette.text }}
@@ -380,11 +395,15 @@ export default function AppearanceSection({
                     </div>
                   </div>
 
-                  <p className="mt-3 text-[11px]" style={{ color: palette.muted }}>
+                  <div className="mt-3 w-full text-center">
+                    <h4 className="text-xl font-bold" style={{ color: palette.text }}>{appName}</h4>
+                  </div>
+
+                  <p className="mt-3 text-center text-[11px]" style={{ color: palette.muted }}>
                     {customUrl}
                   </p>
 
-                  <div className="mt-4 flex items-end gap-2">
+                  <div className="mt-4 flex items-end justify-center gap-2">
                     {[42, 70, 54, 86, 62, 78].map((height, index) => (
                       <span
                         key={height}
@@ -449,10 +468,23 @@ export default function AppearanceSection({
 
               <div className="absolute bottom-0 left-0 right-0 px-5 pb-5">
                 <button
-                  className="w-full py-3 text-xs font-bold uppercase tracking-[0.16em] transition hover:brightness-110 text-on-accent"
+                  type="button"
+                  className="w-full border px-4 py-3 text-xs font-semibold uppercase tracking-[0.16em] transition"
+                  onMouseEnter={() => setIsPreviewButtonHovered(true)}
+                  onMouseLeave={() => setIsPreviewButtonHovered(false)}
+                  onFocus={() => setIsPreviewButtonHovered(true)}
+                  onBlur={() => setIsPreviewButtonHovered(false)}
                   style={{
-                    backgroundColor: palette.accent,
-                    borderRadius: `calc(10px + ${radius * 0.3}px)`
+                    borderColor: isPreviewButtonHovered ? previewHoverAccent : palette.accent,
+                    backgroundColor: isPreviewButtonHovered ? previewHoverAccent : palette.accent,
+                    color: previewOnAccentText,
+                    boxShadow: isPreviewButtonHovered
+                      ? `0 18px 42px -24px ${palette.accent}80, inset 0 0 0 1px ${previewOnAccentText}14`
+                      : `0 16px 40px -24px ${palette.accent}73`,
+                    borderRadius: `calc(10px + ${radius * 0.3}px)`,
+                    transform: "none",
+                    transition:
+                      "background-color 360ms cubic-bezier(0.16, 1, 0.3, 1), border-color 360ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 360ms cubic-bezier(0.16, 1, 0.3, 1), color 240ms cubic-bezier(0.22, 1, 0.36, 1)"
                   }}
                 >
                   Resolve Selected

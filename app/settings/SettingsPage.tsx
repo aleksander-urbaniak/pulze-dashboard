@@ -38,6 +38,13 @@ type UsersResponse = { users: User[] };
 type AuditLogResponse = { logs: AuditLogEntry[]; total: number };
 type AuthProvidersResponse = { settings: AuthProvidersSettings };
 type TabKey = "data" | "appearance" | "users" | "audit" | "access";
+type BellNotification = {
+  id: string;
+  title: string;
+  message: string;
+  timestamp: string;
+  tone: "success" | "error" | "info";
+};
 
 const defaultAuthProviders: AuthProvidersSettings = {
   oidc: {
@@ -132,6 +139,8 @@ export default function SettingsPage() {
   const [auditPageSize, setAuditPageSize] = useState(25);
   const [auditStatus, setAuditStatus] = useState<string | null>(null);
   const [isLoadingAudit, setIsLoadingAudit] = useState(false);
+  const [bellNotifications, setBellNotifications] = useState<BellNotification[]>([]);
+  const [unreadBellNotifications, setUnreadBellNotifications] = useState(0);
   const [newUser, setNewUser] = useState({
     username: "",
     firstName: "",
@@ -145,6 +154,20 @@ export default function SettingsPage() {
   const canConfigureAuth = useMemo(() => hasPermission(user, "settings.write"), [user]);
 
   const canWriteSettings = useMemo(() => hasPermission(user, "settings.write"), [user]);
+
+  function pushBellNotification(title: string, message: string, tone: BellNotification["tone"]) {
+    setBellNotifications((prev) => [
+      {
+        id: createId(),
+        title,
+        message,
+        timestamp: new Date().toISOString(),
+        tone
+      },
+      ...prev
+    ].slice(0, 20));
+    setUnreadBellNotifications((count) => count + 1);
+  }
 
   useEffect(() => {
     setCanEditSettings(canWriteSettings);
@@ -172,6 +195,7 @@ export default function SettingsPage() {
     const response = await fetch("/api/settings/auth");
     if (!response.ok) {
       setAuthStatus("Failed to load auth providers.");
+      pushBellNotification("Access", "Failed to load auth providers.", "error");
       return;
     }
     const data = (await response.json()) as AuthProvidersResponse;
@@ -280,6 +304,7 @@ export default function SettingsPage() {
     if (!response.ok) {
       setIsLoadingAudit(false);
       setAuditStatus("Failed to load audit log.");
+      pushBellNotification("Audit", "Failed to load audit log.", "error");
       return;
     }
     const data = (await response.json()) as AuditLogResponse;
@@ -324,11 +349,13 @@ export default function SettingsPage() {
     if (!response.ok) {
       const data = await response.json();
       setSettingsStatus(data.error ?? "Failed to save settings");
+      pushBellNotification("Settings", data.error ?? "Failed to save settings", "error");
       return;
     }
     const data = (await response.json()) as SettingsResponse;
     setSettingsDraft(data.settings);
     setSettingsStatus("Settings saved.");
+    pushBellNotification("Settings", "Settings saved.", "success");
   }
 
   async function createNewUser(overrides?: Partial<typeof newUser>) {
@@ -348,9 +375,11 @@ export default function SettingsPage() {
     if (!response.ok) {
       const data = await response.json();
       setUserStatus(data.error ?? "Failed to create user");
+      pushBellNotification("Users", data.error ?? "Failed to create user", "error");
       return;
     }
     setUserStatus("User created.");
+    pushBellNotification("Users", "User created.", "success");
     setNewUser({
       username: "",
       firstName: "",
@@ -389,9 +418,11 @@ export default function SettingsPage() {
     if (!response.ok) {
       const data = await response.json();
       setUserUpdateStatus(data.error ?? "Failed to update user");
+      pushBellNotification("Users", data.error ?? "Failed to update user", "error");
       return;
     }
     setUserUpdateStatus("User updated.");
+    pushBellNotification("Users", "User updated.", "success");
     setUserPasswordDrafts((prev) => ({ ...prev, [entry.id]: "" }));
     await loadUsers(entry.id);
   }
@@ -409,9 +440,11 @@ export default function SettingsPage() {
     const data = await response.json();
     if (!response.ok) {
       setUserUpdateStatus(data.error ?? "Failed to delete user");
+      pushBellNotification("Users", data.error ?? "Failed to delete user", "error");
       return;
     }
     setUserUpdateStatus("User deleted.");
+    pushBellNotification("Users", "User deleted.", "success");
     await loadUsers();
   }
 
@@ -558,10 +591,12 @@ export default function SettingsPage() {
     const data = await response.json();
     if (!response.ok) {
       setAuthStatus(data.error ?? "Failed to save auth providers.");
+      pushBellNotification("Access", data.error ?? "Failed to save auth providers.", "error");
       return;
     }
     setAuthDraft(data.settings ?? defaultAuthProviders);
     setAuthStatus("Auth providers saved.");
+    pushBellNotification("Access", "Auth providers saved.", "success");
   }
 
   if (isLoading || !user) {
@@ -574,17 +609,30 @@ export default function SettingsPage() {
     );
   }
 
+  const headerRight = (
+    <UserGreetingPill
+      user={user}
+      settings={settings}
+      appNotifications={bellNotifications}
+      appNotificationCount={unreadBellNotifications}
+      onClearAppNotifications={() => {
+        setBellNotifications([]);
+        setUnreadBellNotifications(0);
+      }}
+    />
+  );
+
   return (
     <main className="w-full min-h-screen border-l border-[rgb(var(--app-divider)/0.82)] bg-[rgb(var(--app-main-bg))] px-4 pb-6 pt-2 sm:px-6 lg:px-6">
       <div className="mx-auto w-full max-w-[1520px]">
         {activeTab === "data" && canViewSettings ? (
           <DataSourcesSection
-            headerRight={<UserGreetingPill user={user} />}
+            headerRight={headerRight}
             settingsDraft={settingsDraft}
             setSettingsDraft={setSettingsDraft}
             canEditSettings={canEditSettings}
             hasInvalidLabels={hasInvalidLabels}
-            settingsStatus={settingsStatus}
+            settingsStatus={null}
             testResults={testResults}
             onSave={saveSettings}
             createPrometheusSource={createPrometheusSource}
@@ -600,11 +648,11 @@ export default function SettingsPage() {
 
         {activeTab === "appearance" && canViewSettings ? (
           <AppearanceSection
-            headerRight={<UserGreetingPill user={user} />}
+            headerRight={headerRight}
             settingsDraft={settingsDraft}
             setSettingsDraft={setSettingsDraft}
             canEditSettings={canEditSettings}
-            settingsStatus={settingsStatus}
+            settingsStatus={null}
             isAdmin={canConfigureAuth}
             onSave={saveSettings}
             onUpdateAppearance={updateAppearance}
@@ -617,9 +665,9 @@ export default function SettingsPage() {
 
         {activeTab === "audit" && canReadAudit ? (
           <AuditSection
-            headerRight={<UserGreetingPill user={user} />}
+            headerRight={headerRight}
             auditLogs={auditLogs}
-            auditStatus={auditStatus}
+            auditStatus={null}
             isLoadingAudit={isLoadingAudit}
             auditTotal={auditTotal}
             auditPage={auditPage}
@@ -640,26 +688,26 @@ export default function SettingsPage() {
 
         {activeTab === "access" && canConfigureAuth ? (
           <AuthProvidersSection
-            headerRight={<UserGreetingPill user={user} />}
+            headerRight={headerRight}
             authDraft={authDraft}
             setAuthDraft={setAuthDraft}
-            authStatus={authStatus}
+            authStatus={null}
             onSave={saveAuthProviders}
           />
         ) : null}
 
         {activeTab === "users" ? (
           <UsersSection
-            headerRight={<UserGreetingPill user={user} />}
+            headerRight={headerRight}
             isAdmin={canManageUsers}
             newUser={newUser}
             setNewUser={setNewUser}
             onCreateUser={createNewUser}
-            userStatus={userStatus}
+            userStatus={null}
             users={users}
             editingUserId={editingUserId}
             setEditingUserId={setEditingUserId}
-            userUpdateStatus={userUpdateStatus}
+            userUpdateStatus={null}
             updateUserDraft={updateUserDraft}
             userPasswordDrafts={userPasswordDrafts}
             setUserPasswordDrafts={setUserPasswordDrafts}

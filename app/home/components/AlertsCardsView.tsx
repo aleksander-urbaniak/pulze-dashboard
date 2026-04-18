@@ -66,6 +66,7 @@ export default function AlertsCardsView({
             const notePreview = alert.ackNote?.trim();
             const instanceLabel = alert.sourceLabel || alert.source;
             const isSelected = selectedAlertIds.has(alert.id);
+
             return (
               <div
                 key={alert.id}
@@ -92,36 +93,43 @@ export default function AlertsCardsView({
                       : styles.cardSeverityInfo
                 )}
               >
-                <button
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onToggleSelection(alert.id);
-                  }}
-                  aria-pressed={isSelected}
-                  aria-label={isSelected ? "Deselect alert" : "Select alert"}
-                  className={clsx(
-                    "absolute right-4 top-4 flex h-5 w-5 items-center justify-center rounded-md border text-[10px]",
-                    isSelected
-                      ? "border-accent/35 selected-soft"
-                      : "border-border bg-base/60 text-muted"
-                  )}
-                >
-                  {isSelected ? "✓" : ""}
-                </button>
-                {alert.groupSize && alert.groupSize > 1 ? (
-                  <span className="absolute right-12 top-4 rounded-full border border-border bg-base/80 px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] text-text/80">
-                    x{alert.groupSize}
-                  </span>
-                ) : null}
-                <div className="flex items-center justify-between gap-3 pr-20">
-                  <p className={clsx("text-xs font-bold uppercase tracking-[0.24em]", styles.cardSeverityLabel)}>
+                <div className="grid min-h-7 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3">
+                  <p
+                    className={clsx(
+                      "inline-flex h-7 items-center text-xs font-bold uppercase tracking-[0.24em] leading-none",
+                      styles.cardSeverityLabel
+                    )}
+                  >
                     <span className={styles.severityDot} />
                     {alert.severity}
                   </p>
-                  <span className="max-w-[60%] truncate rounded-lg border border-border bg-base/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-text/80">
+                  <span className="inline-flex h-7 min-w-0 justify-self-end items-center truncate rounded-lg border border-border bg-base/80 px-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-text/80 leading-none">
                     {instanceLabel}
                   </span>
+                  <div className="flex items-center gap-2 justify-self-end">
+                    {alert.groupSize && alert.groupSize > 1 ? (
+                      <span className="rounded-full border border-border bg-base/80 px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] text-text/80">
+                        x{alert.groupSize}
+                      </span>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onToggleSelection(alert.id);
+                      }}
+                      aria-pressed={isSelected}
+                      aria-label={isSelected ? "Deselect alert" : "Select alert"}
+                      className={clsx(
+                        "flex h-5 w-5 items-center justify-center rounded-md border text-[10px]",
+                        isSelected
+                          ? "border-accent/35 selected-soft"
+                          : "border-border bg-base/60 text-muted"
+                      )}
+                    >
+                      {isSelected ? "✓" : ""}
+                    </button>
+                  </div>
                 </div>
                 {alert.ackStatus && alert.ackStatus !== "active" ? (
                   <span
@@ -157,7 +165,7 @@ export default function AlertsCardsView({
                 {notePreview && !isExpanded ? (
                   <p className={styles.cardNotePreview}>Note: {notePreview}</p>
                 ) : null}
-                <div className="mt-5 flex items-center justify-between border-t border-border pt-3 text-[10px] text-muted">
+                <div className="mt-auto flex items-center justify-between border-t border-border pt-3 text-[10px] text-muted">
                   <div className="flex items-center gap-1.5">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
                       <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="1.7" />

@@ -293,6 +293,7 @@ export default function AnalyticsPage() {
       <div className="mx-auto w-full max-w-[1520px]">
         <AnalyticsHeader
           user={user}
+          settings={settings}
         />
         <div className="mt-3 flex justify-end">
           <button

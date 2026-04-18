@@ -120,7 +120,7 @@
 }
 
 .card {
-  @apply relative overflow-hidden rounded-xl border p-4;
+  @apply relative flex h-full flex-col overflow-hidden rounded-xl border p-4;
   border-color: rgb(27 47 77);
   background-color: rgb(6 15 31 / 0.88);
   transition:

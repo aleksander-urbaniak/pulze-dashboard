@@ -426,11 +426,20 @@ h4 {
     background-color: rgb(var(--surface) / 0.72);
     color: rgb(var(--text));
     box-shadow: 0 10px 26px -22px rgb(2 8 18 / 0.65);
+    transform: none;
+    will-change: auto;
   }
 
   .btn-unified:hover {
     border-color: rgb(var(--accent) / 0.45);
     color: rgb(var(--accent));
+    transform: none;
+    filter: none;
+  }
+
+  .btn-unified:active {
+    transform: none;
+    filter: none;
   }
 
   .btn-unified-primary {
@@ -438,10 +447,22 @@ h4 {
     background-color: rgb(var(--accent));
     color: rgb(var(--on-accent-text));
     box-shadow: 0 16px 40px -24px rgb(var(--accent) / 0.45);
+    transition:
+      transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+      background-color 360ms cubic-bezier(0.16, 1, 0.3, 1),
+      border-color 360ms cubic-bezier(0.16, 1, 0.3, 1),
+      color 240ms cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 360ms cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .btn-unified-primary:hover {
-    filter: brightness(1.12);
+    color: rgb(var(--on-accent-text));
+    border-color: color-mix(in srgb, rgb(var(--accent)) 84%, black);
+    background-color: color-mix(in srgb, rgb(var(--accent)) 84%, black);
+    box-shadow:
+      0 18px 42px -24px rgb(var(--accent) / 0.5),
+      0 0 0 1px rgb(var(--on-accent-text) / 0.08) inset;
+    filter: none;
   }
 
   .btn-unified-muted {
