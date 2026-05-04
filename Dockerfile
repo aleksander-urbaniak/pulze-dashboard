@@ -1,4 +1,4 @@
-FROM node:20-bookworm-slim AS base
+FROM node:25-bookworm-slim AS base
 
 WORKDIR /app
 ARG APP_VERSION=
@@ -18,7 +18,7 @@ RUN mkdir -p public
 RUN npm run build
 RUN npm prune --omit=dev
 
-FROM node:20-bookworm-slim AS runner
+FROM node:25-bookworm-slim AS runner
 
 WORKDIR /app
 ENV NODE_ENV=production
