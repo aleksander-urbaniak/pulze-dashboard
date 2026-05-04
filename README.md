@@ -1,136 +1,182 @@
-<div align="center" width="100%">
-  <img src="./app/icon.svg" width="128" alt="PulZe Logo" />
-</div>
-
 # PulZe Dashboard
 
-PulZe is a self-hosted monitoring dashboard that aggregates alerts from Prometheus/Alertmanager, Zabbix, and Uptime Kuma in one place.
+> [!WARNING]
+> PulZe Dashboard is **vibecoded** software. It is built with care, but it has not been battle-tested like a commercial monitoring control plane. Review the code, keep backups, and **use it at your own risk**.
 
-<img src="https://img.shields.io/badge/Next.js-16-black?logo=next.js&logoColor=white" />
-<img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black" />
-<img src="https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white" />
-<img src="https://img.shields.io/badge/Tailwind_CSS-4-38B2AC?logo=tailwind-css&logoColor=white" />
-<img src="https://img.shields.io/badge/SQLite-3-003B57?logo=sqlite&logoColor=white" />
-<img src="https://img.shields.io/badge/Node.js-20-339933?logo=node.js&logoColor=white" />
+<p align="center">
+  <img src="https://img.shields.io/badge/Monitoring-dashboard-19A974?style=for-the-badge" alt="Monitoring dashboard" />
+  <img src="https://img.shields.io/badge/Next.js-16.2.3-000000?style=for-the-badge&logo=nextdotjs" alt="Next.js 16.2.3" />
+  <img src="https://img.shields.io/badge/React-19.2.3-61DAFB?style=for-the-badge&logo=react&logoColor=06111f" alt="React 19.2.3" />
+  <img src="https://img.shields.io/badge/SQLite-3-003B57?style=for-the-badge&logo=sqlite&logoColor=white" alt="SQLite" />
+  <img src="https://img.shields.io/badge/Docker-ready-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker ready" />
+</p>
 
-<img src="./docs/images/dashboard.png" width="900" alt="PulZe Dashboard Screenshot" />
+<p align="center">
+  <strong>A self-hosted monitoring dashboard for Prometheus/Alertmanager, Zabbix, and Uptime Kuma.</strong>
+</p>
 
-## Features
+<p align="center">
+  Bring alerts, incident state, source health, access control, analytics, and audit activity into one clean web UI.
+</p>
 
-- Unified alert view (cards, table, split)
-- Cross-source filtering and search
-- Bulk acknowledge/resolve with audit trail
-- Role-based access control
-- SAML SSO support (provider-agnostic)
-- Appearance and branding customization
-- Analytics and trend views
+<p align="center">
+  <img src="./img/main-dashboard.png" alt="PulZe Dashboard main screen" width="100%" />
+</p>
 
-## Run with Docker Compose
+---
 
-Image:
-- `aleksanderurbaniak/pulze-dashboard:latest`
+## What It Does
 
-`compose.yml` already includes:
-- `APP_BASE_URL` (important for SAML behind domain/reverse proxy)
+PulZe Dashboard is a lightweight control room for teams that need one place to inspect alert noise across several monitoring systems. It pulls alerts from Prometheus Alertmanager, Zabbix, and Uptime Kuma, then lets operators filter, search, acknowledge, resolve, and review activity without jumping between tools.
 
-Example `.env`:
+It is especially useful when you want a self-hosted status desk with role-based access, SAML login, saved dashboard views, appearance customization, and a persistent audit trail.
 
-```env
-APP_BASE_URL=https://pulze-demo.auware.xyz
+## Highlights
+
+| Area | What PulZe gives you |
+| --- | --- |
+| **Unified alerts** | Browse Prometheus/Alertmanager, Zabbix, and Uptime Kuma alerts together. |
+| **Dashboard views** | Switch between cards, table, and split views for different operating styles. |
+| **Filtering** | Search and filter across source, severity, status, environment, team, and labels. |
+| **Bulk actions** | Acknowledge and resolve multiple alerts with recorded state changes. |
+| **Analytics** | Review alert trends, summary metrics, and team snapshots. |
+| **Access control** | Use roles for admins, operators, viewers, and auditors. |
+| **Authentication** | Local accounts, optional 2FA, and SAML SSO for an IdP-backed flow. |
+| **Customization** | Tune branding, theme, accent color, and visual effects from settings. |
+| **Self-hosting** | Run it with Docker Compose or develop locally with Node.js and SQLite. |
+
+## App Sections
+
+- **Dashboard** - live alert overview, filters, saved views, source refresh, and bulk state actions.
+- **Analytics** - alert summaries, trends, response signals, and team-oriented snapshots.
+- **Settings** - data sources, users, roles, audit log, SAML provider settings, and appearance controls.
+- **Profile** - account details, password changes, and two-factor authentication setup.
+
+## Quick Start With Docker
+
+1. Copy the example environment file:
+
+```bash
+cp .env.example .env
 ```
 
-Start:
+2. Set the public base URL:
+
+```bash
+APP_BASE_URL=https://pulze.example.com
+```
+
+3. Start the app:
 
 ```bash
 docker compose pull
 docker compose up -d
 ```
 
-PulZe is available on `http://localhost:3000` (or your configured domain).
+PulZe Dashboard will be available at:
 
-Stop:
-
-```bash
-docker compose down
+```text
+http://localhost:3000
 ```
 
-Container admin CLI:
+The Docker Compose setup stores SQLite data in the `pulze-data` volume and mounts it at `/app/data`.
 
-```bash
-docker compose exec pulze-dashboard pulze help
-docker compose exec pulze-dashboard pulze users ls
-docker compose exec pulze-dashboard pulze passwd admin NewStrongPassword123
-docker compose exec pulze-dashboard pulze users create --username ops --password OpsPassword123 --role operator --first-name Ops --last-name User --email ops@example.com
-```
-
-## Run from Local Source
+## Local Development
 
 Requirements:
+
 - Node.js 20+
 - npm
 
+Run:
+
 ```bash
 npm install
+cp .env.example .env
 npm run dev
 ```
 
-Production build:
+Then open:
 
-```bash
-npm run build
-npm start
+```text
+http://localhost:3000
 ```
 
-## SAML Setup
+## Environment
 
-PulZe uses SAML (OIDC is not used in the current flow).
+```bash
+APP_BASE_URL=https://pulze.example.com
+SAML_ALLOW_UNSIGNED=false
+```
 
-In your IdP (Authentik, Keycloak, Okta, Entra ID, OneLogin, etc.):
+`APP_BASE_URL` is used to build SAML callback and redirect URLs. It must match the public URL used by your users and identity provider.
 
-1. Create a SAML application/provider.
-2. Set ACS URL to:
-   - `https://your-domain/api/auth/sso/saml/callback`
-3. Set Audience / SP Entity ID to the same value you configure in PulZe `SP entity ID`.
-4. Configure claims/attributes so a username attribute is sent.
+## Data Source Notes
 
-In PulZe (`Settings -> Access -> SAML Provider`), fill:
-- `IdP entity ID`
-- `SSO service URL`
-- `SLO service URL` (optional)
-- `Username attribute`
-- `SP entity ID`
-- `SP name ID format`
+PulZe supports multiple instances for each source type:
 
-Notes:
-- `APP_BASE_URL` must match the public URL used by users and IdP.
-- If your IdP does not expose signing certs in metadata, signature validation may fail until signing is configured.
+- **Prometheus/Alertmanager** - provide the base URL; PulZe appends `/api/v2/alerts`.
+- **Zabbix** - provide the base URL; PulZe appends `/zabbix/api_jsonrpc.php`.
+- **Uptime Kuma** - provide a base URL and choose status page or API key mode.
+
+After adding a source, use the built-in source test action to confirm the endpoint and credentials.
+
+## SAML Notes
+
+PulZe uses SAML for SSO in the current auth flow.
+
+In your IdP, such as Authentik, Keycloak, Okta, Entra ID, or OneLogin:
+
+1. Create a SAML application or provider.
+2. Set the ACS URL to:
+
+```text
+https://your-domain/api/auth/sso/saml/callback
+```
+
+3. Set the Audience / SP Entity ID to the same value configured in PulZe.
+4. Send a stable username attribute.
+
+In PulZe, open **Settings -> Access -> SAML Provider** and configure the IdP entity ID, SSO service URL, optional SLO service URL, username attribute, SP entity ID, and SP name ID format.
+
+## Security Notes
+
+PulZe includes several safety-minded features:
+
+- Password-based login with server-side sessions
+- Optional two-factor authentication
+- SAML SSO configuration
+- Role-based permissions
+- Audit events for important actions
+- Runtime image hardening for the Docker build
+
+This does not make it a hardened enterprise product. Put it behind HTTPS, restrict network access where possible, protect the SQLite volume, keep the container updated, and review changes before trusting it with important monitoring workflows.
+
+## Useful Scripts
+
+```bash
+npm run dev            # Start the Next.js dev server
+npm run build          # Build the production app
+npm run start          # Start a built Next.js app
+npm run lint           # Run ESLint
+npm run version:repo   # Resolve the app version from Git/package metadata
+npm run docker:build   # Build a versioned Docker image
+npm run docker:up      # Start the versioned Docker Compose stack
+npm run docker:up:fg   # Start Docker Compose in the foreground
+npm run docker:down    # Stop the Docker Compose stack
+```
 
 ## Versioning
 
-- App version is resolved from latest local Git tag (`git describe --tags --abbrev=0`)
-- Fallback is `package.json` version (`v1.0.0`)
-- Docker images are auto-tagged on each merge to `main` (`v1.0.0`, `v1.0.1`, ...)
-- CI injects that tag into the build, so compose does not need `APP_VERSION`
-- Check resolved version:
+- Release source of truth: **Git tags**
+- Tag format: `vMAJOR.MINOR.PATCH` such as `v1.0.0`
+- Runtime version source:
+  - CI and Docker builds use the injected `APP_VERSION`
+  - Local builds fall back to the latest local Git tag
+  - Non-tagged environments fall back to `package.json`
+
+Helpful version command:
 
 ```bash
 npm run version:repo
 ```
-
-## Data Sources
-
-Multiple instances are supported for each source:
-
-- Prometheus/Alertmanager: base URL; `/api/v2/alerts` is appended
-- Zabbix: base URL; `/zabbix/api_jsonrpc.php` is appended
-- Uptime Kuma: base URL + mode (`status` or `apiKey`)
-
-## Data Persistence
-
-- Local: SQLite file at `data/pulze.db`
-- Docker: named volume `pulze-data` mounted to `/app/data`
-
-## Troubleshooting
-
-- If `better-sqlite3` fails on Windows, use Node.js LTS and install Visual Studio Build Tools.
-- If SAML ACS mismatch appears, set `APP_BASE_URL` to the exact public URL.
