@@ -18,9 +18,21 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build application
+        run: npm run build
 
       - name: Calculate next patch version tag
         id: app_version
@@ -40,6 +52,37 @@ jobs:
           echo "value=$next_tag" >> "$GITHUB_OUTPUT"
           echo "Next tag: $next_tag"
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build image for security scan
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          push: false
+          tags: aleksanderurbaniak/pulze-dashboard:scan-${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            APP_VERSION=${{ steps.app_version.outputs.value }}
+
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: aleksanderurbaniak/pulze-dashboard:scan-${{ github.sha }}
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+
       - name: Create and push git tag
         shell: bash
         run: |
@@ -54,20 +97,15 @@ jobs:
             git push origin "$tag"
           fi
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
       - name: Build and Push Docker Image
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
+          sbom: true
+          provenance: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           build-args: |
             APP_VERSION=${{ steps.app_version.outputs.value }}
           labels: |
