@@ -83,20 +83,6 @@ jobs:
           exit-code: "1"
           format: table
 
-      - name: Create and push git tag
-        shell: bash
-        run: |
-          set -euo pipefail
-          tag="${{ steps.app_version.outputs.value }}"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if git rev-parse "$tag" >/dev/null 2>&1; then
-            echo "Tag $tag already exists; skipping."
-          else
-            git tag -a "$tag" -m "Release $tag"
-            git push origin "$tag"
-          fi
-
       - name: Build and Push Docker Image
         uses: docker/build-push-action@v6
         with:
@@ -113,3 +99,17 @@ jobs:
           tags: |
             aleksanderurbaniak/pulze-dashboard:latest
             aleksanderurbaniak/pulze-dashboard:${{ steps.app_version.outputs.value }}
+
+      - name: Create and push git tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ steps.app_version.outputs.value }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git rev-parse "$tag" >/dev/null 2>&1; then
+            echo "Tag $tag already exists; skipping."
+          else
+            git tag -a "$tag" -m "Release $tag"
+            git push origin "$tag"
+          fi
