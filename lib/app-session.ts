@@ -6,6 +6,7 @@ import type { Settings, User } from "./types";
 interface AppSession {
   user: User | null;
   settings: Settings | null;
+  setSettings: (settings: Settings) => void;
 }
 
 export const AppSessionContext = createContext<AppSession | null>(null);

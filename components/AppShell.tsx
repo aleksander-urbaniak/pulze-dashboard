@@ -275,7 +275,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AppSessionContext.Provider value={{ user, settings }}>
+    <AppSessionContext.Provider value={{ user, settings, setSettings }}>
       <div className="min-h-screen flex flex-col md:flex-row">
         <Sidebar onLogout={handleLogout} onOpenProfileEditor={() => setIsProfileEditorOpen(true)} />
         <div className="flex-1 min-w-0">{children}</div>

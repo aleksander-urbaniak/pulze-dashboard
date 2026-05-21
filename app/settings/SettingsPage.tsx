@@ -120,7 +120,7 @@ export default function SettingsPage() {
   const searchParams = useSearchParams();
   const requestedTabFromUrl = searchParams.get("tab") as TabKey | null;
   const { setTheme } = useTheme();
-  const { user, settings } = useAppSession();
+  const { user, settings, setSettings } = useAppSession();
   const [activeTab, setActiveTab] = useState<TabKey>(requestedTabFromUrl ?? "data");
   const [settingsDraft, setSettingsDraft] = useState<Settings>(settings || emptySettings);
   const [canEditSettings, setCanEditSettings] = useState(false);
@@ -354,6 +354,7 @@ export default function SettingsPage() {
     }
     const data = (await response.json()) as SettingsResponse;
     setSettingsDraft(data.settings);
+    setSettings(data.settings);
     setSettingsStatus("Settings saved.");
     pushBellNotification("Settings", "Settings saved.", "success");
   }
@@ -632,7 +633,7 @@ export default function SettingsPage() {
             setSettingsDraft={setSettingsDraft}
             canEditSettings={canEditSettings}
             hasInvalidLabels={hasInvalidLabels}
-            settingsStatus={null}
+            settingsStatus={settingsStatus}
             testResults={testResults}
             onSave={saveSettings}
             createPrometheusSource={createPrometheusSource}
@@ -652,7 +653,7 @@ export default function SettingsPage() {
             settingsDraft={settingsDraft}
             setSettingsDraft={setSettingsDraft}
             canEditSettings={canEditSettings}
-            settingsStatus={null}
+            settingsStatus={settingsStatus}
             isAdmin={canConfigureAuth}
             onSave={saveSettings}
             onUpdateAppearance={updateAppearance}
