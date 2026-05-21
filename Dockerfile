@@ -34,7 +34,7 @@ COPY --from=base /app/scripts/pulze-cli.mjs ./scripts/pulze-cli.mjs
 
 # Pick up runtime security updates available in Debian repositories.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends --only-upgrade tar \
+  && apt-get install -y --no-install-recommends --only-upgrade libgnutls30 tar \
   && rm -rf /var/lib/apt/lists/*
 
 # Remove npm/npx from runtime image to reduce attack surface and avoid npm-only CVEs.
