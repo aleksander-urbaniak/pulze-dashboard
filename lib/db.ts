@@ -538,11 +538,9 @@ function normalizeAuthProvidersSettings(
 }
 
 function seed() {
-  const settingsRow = db.prepare("SELECT id FROM settings WHERE id = 1").get();
-  if (!settingsRow) {
-    const now = new Date().toISOString();
-    db.prepare(
-      `INSERT INTO settings (
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT OR IGNORE INTO settings (
         id,
         prometheus_url,
         prometheus_auth_type,
@@ -579,30 +577,25 @@ function seed() {
         @createdAt,
         @updatedAt
       )`
-    ).run({
-      ...legacyDefaults,
-      prometheusSources: JSON.stringify(defaultSettings.prometheusSources),
-      zabbixSources: JSON.stringify(defaultSettings.zabbixSources),
-      kumaSources: JSON.stringify(defaultSettings.kumaSources),
-      appearanceJson: JSON.stringify(defaultSettings.appearance),
-      refreshInterval: defaultSettings.refreshInterval,
-      createdAt: now,
-      updatedAt: now
-    });
-  }
+  ).run({
+    ...legacyDefaults,
+    prometheusSources: JSON.stringify(defaultSettings.prometheusSources),
+    zabbixSources: JSON.stringify(defaultSettings.zabbixSources),
+    kumaSources: JSON.stringify(defaultSettings.kumaSources),
+    appearanceJson: JSON.stringify(defaultSettings.appearance),
+    refreshInterval: defaultSettings.refreshInterval,
+    createdAt: now,
+    updatedAt: now
+  });
 
-  const authRow = db.prepare("SELECT id FROM auth_providers WHERE id = 1").get();
-  if (!authRow) {
-    const now = new Date().toISOString();
-    db.prepare(
-      `INSERT INTO auth_providers (id, settings_json, created_at, updated_at)
+  db.prepare(
+    `INSERT OR IGNORE INTO auth_providers (id, settings_json, created_at, updated_at)
        VALUES (1, @settingsJson, @createdAt, @updatedAt)`
-    ).run({
-      settingsJson: JSON.stringify(defaultAuthProviders),
-      createdAt: now,
-      updatedAt: now
-    });
-  }
+  ).run({
+    settingsJson: JSON.stringify(defaultAuthProviders),
+    createdAt: now,
+    updatedAt: now
+  });
 }
 
 seed();
