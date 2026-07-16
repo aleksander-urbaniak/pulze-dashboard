@@ -29,7 +29,7 @@
     "react-dom": "19.2.5"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "4.1.18",
+    "@tailwindcss/postcss": "4.3.2",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "25.0.9",
     "@types/react": "19.2.9",
